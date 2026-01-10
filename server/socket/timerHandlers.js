@@ -86,17 +86,24 @@ export const initializeTimerHandlers = (io) => {
         // Normalize roomId to string for comparison
         const roomIdStr = String(roomId);
         
-        // Check if socket is in the room - allow if currentRoomId matches even if rooms check fails (timing issue)
-        const isInRoom = socket.rooms.has(roomIdStr) || (socket.currentRoomId && String(socket.currentRoomId) === roomIdStr);
+        // Check if socket is in the room - be very lenient (allow if currentRoomId matches)
+        let isInRoom = socket.rooms.has(roomIdStr);
+        
+        if (!isInRoom) {
+          // Check if currentRoomId matches (room join might be in progress)
+          if (socket.currentRoomId && String(socket.currentRoomId) === roomIdStr) {
+            // Try to join explicitly (in case join wasn't complete)
+            socket.join(roomIdStr);
+            // Wait a tiny bit for join to process
+            await new Promise(resolve => setTimeout(resolve, 50));
+            isInRoom = socket.rooms.has(roomIdStr);
+          }
+        }
+        
         if (!isInRoom) {
           logger.warn(`Timer start: Socket ${socket.id} not in room ${roomIdStr}. Current rooms: ${Array.from(socket.rooms).join(', ')}, currentRoomId: ${socket.currentRoomId}`);
           socket.emit('error', { message: 'Please join the room first' });
           return;
-        }
-        
-        // Ensure socket is actually in the room (join if not already)
-        if (!socket.rooms.has(roomIdStr)) {
-          socket.join(roomIdStr);
         }
 
         const now = Date.now();
