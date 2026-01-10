@@ -30,7 +30,7 @@ export const initializeTimerHandlers = (io) => {
     const now = Date.now();
     for (const [roomId, state] of roomStates.entries()) {
       if (state.isRunning && state.endsAt) {
-        const remaining = Math.max(0, state.endsAt - now);
+        let remaining = Math.max(0, state.endsAt - now);
         
         // Auto-transition when timer reaches 0
         if (remaining === 0) {
@@ -43,7 +43,6 @@ export const initializeTimerHandlers = (io) => {
             const breakMs = state.durations.breakMinutes * 60 * 1000;
             state.endsAt = now + breakMs;
             state.isRunning = true;
-            // Recalculate remaining for break timer
             remaining = breakMs;
           } else {
             // Focus ended, break ended - timer is complete
@@ -56,6 +55,16 @@ export const initializeTimerHandlers = (io) => {
           mode: state.mode,
           endsAt: state.endsAt,
           isRunning: state.isRunning,
+          remaining: remaining,
+          durations: state.durations,
+        });
+      } else if (!state.isRunning && state.endsAt) {
+        // Timer is paused, still emit sync with current remaining time
+        const remaining = Math.max(0, state.endsAt - now);
+        io.to(roomId).emit('timer:sync', {
+          mode: state.mode,
+          endsAt: state.endsAt,
+          isRunning: false,
           remaining: remaining,
           durations: state.durations,
         });
