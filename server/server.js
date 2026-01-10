@@ -1,0 +1,165 @@
+// Load environment variables FIRST before any other imports
+import 'dotenv/config';
+
+import express from 'express';
+import cors from 'cors';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import session from 'express-session';
+import passport from 'passport';
+import mongoSanitize from 'express-mongo-sanitize';
+import { connectDB } from './config/db.js';
+import { initializeEmail } from './config/email.js';
+import './config/passport.js';
+import { helmetConfig, authRateLimit, apiRateLimit } from './middleware/security.js';
+import { requestLogger, logger } from './utils/logger.js';
+import healthRouter from './routes/health.js';
+import authRouter from './routes/auth.js';
+import googleAuthRouter from './routes/googleAuth.js';
+import roomsRouter from './routes/rooms.js';
+import tasksRouter from './routes/tasks.js';
+import usersRouter from './routes/users.js';
+import invitesRouter from './routes/invites.js';
+import adminRouter from './routes/admin.js';
+import friendsRouter from './routes/friends.js';
+import presetsRouter from './routes/presets.js';
+import sessionsRouter from './routes/sessions.js';
+import notificationsRouter from './routes/notifications.js';
+import analyticsRouter from './routes/analytics.js';
+import roomInvitesRouter from './routes/roomInvites.js';
+import taskCommentsRouter from './routes/taskComments.js';
+import taskTemplatesRouter from './routes/taskTemplates.js';
+import messagesRouter from './routes/messages.js';
+import { socketAuth } from './middleware/socketAuth.js';
+import { initializeRoomHandlers } from './socket/roomHandlers.js';
+import { initializeTimerHandlers } from './socket/timerHandlers.js';
+
+const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    methods: ['GET', 'POST'],
+    credentials: true,
+    allowedHeaders: ['Authorization', 'Content-Type'],
+  },
+  // Improve connection stability
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  transports: ['websocket', 'polling'],
+});
+
+// Socket.io authentication
+io.use(socketAuth);
+
+const PORT = process.env.PORT || 5000;
+
+// Security middleware
+app.use(helmetConfig);
+
+// CORS - strict with CLIENT_URL
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// Body parsing
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Data sanitization - prevent NoSQL injection
+app.use(mongoSanitize());
+
+// Request logging
+app.use(requestLogger);
+
+// Session for passport
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'vora-secret-key',
+    resave: false,
+    saveUninitialized: false,
+  })
+);
+
+// Passport middleware
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Store io instance for use in routes
+app.set('io', io);
+
+// Routes
+app.use('/health', healthRouter);
+// Mount auth routes at both /api/auth and /auth for compatibility
+app.use('/api/auth', authRateLimit, authRouter); // Rate limit auth routes
+// Mount Google OAuth routes first at /auth (more specific routes)
+app.use('/auth', googleAuthRouter); // Google OAuth routes (/auth/google, /auth/google/callback)
+// Then mount general auth routes at /auth (will handle /auth/register, /auth/login, /auth/me)
+app.use('/auth', authRateLimit, authRouter); // Also mount at /auth for client compatibility
+app.use('/api/rooms', apiRateLimit, roomsRouter);
+app.use('/rooms', apiRateLimit, roomsRouter); // Also mount at /rooms for client compatibility
+app.use('/api/users', apiRateLimit, usersRouter);
+app.use('/users', apiRateLimit, usersRouter); // Also mount at /users for client compatibility
+app.use('/api/invites', apiRateLimit, invitesRouter);
+app.use('/invites', apiRateLimit, invitesRouter); // Also mount at /invites for client compatibility
+app.use('/api/tasks', apiRateLimit, tasksRouter);
+app.use('/tasks', apiRateLimit, tasksRouter); // Also mount at /tasks for client compatibility
+app.use('/api/admin', apiRateLimit, adminRouter);
+app.use('/admin', apiRateLimit, adminRouter); // Also mount at /admin for client compatibility
+app.use('/api/friends', apiRateLimit, friendsRouter);
+app.use('/friends', apiRateLimit, friendsRouter);
+app.use('/api/presets', apiRateLimit, presetsRouter);
+app.use('/presets', apiRateLimit, presetsRouter);
+app.use('/api/sessions', apiRateLimit, sessionsRouter);
+app.use('/sessions', apiRateLimit, sessionsRouter);
+app.use('/api/notifications', apiRateLimit, notificationsRouter);
+app.use('/notifications', apiRateLimit, notificationsRouter);
+app.use('/api/analytics', apiRateLimit, analyticsRouter);
+app.use('/analytics', apiRateLimit, analyticsRouter);
+app.use('/api/rooms', apiRateLimit, roomInvitesRouter); // Mount roomInvites at /api/rooms/:id/invites
+app.use('/api/tasks', apiRateLimit, taskCommentsRouter); // Mount taskComments at /api/tasks/:taskId/comments
+app.use('/api/task-templates', apiRateLimit, taskTemplatesRouter);
+app.use('/task-templates', apiRateLimit, taskTemplatesRouter);
+app.use('/api/messages', apiRateLimit, messagesRouter);
+app.use('/messages', apiRateLimit, messagesRouter);
+
+// Log mounted routes in development
+if (process.env.NODE_ENV !== 'production') {
+  logger.info('📋 API Routes mounted successfully');
+}
+
+// Socket.io handlers
+initializeRoomHandlers(io);
+initializeTimerHandlers(io);
+
+// Initialize email
+initializeEmail();
+
+// 404 handler for unmatched API routes (must be after all routes)
+app.use('/api/*', (req, res) => {
+  logger.warn(`404: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({
+    success: false,
+    message: `Route ${req.method} ${req.originalUrl} not found`,
+  });
+});
+
+// Connect to MongoDB
+connectDB()
+  .then(() => {
+    httpServer.listen(PORT, () => {
+      logger.info(`🚀 Server running on port ${PORT}`);
+      logger.info(`📡 Socket.io server ready`);
+      logger.info(`🌐 Client URL: ${process.env.CLIENT_URL || 'http://localhost:5173'}`);
+    });
+  })
+  .catch((error) => {
+    logger.error('❌ Failed to start server:', error);
+    process.exit(1);
+  });
+
+export { io };
+

@@ -1,0 +1,22 @@
+{
+  "name": "vora",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vora - Online Study Rooms App",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:client": "pnpm --filter client dev",
+    "dev:server": "pnpm --filter server dev",
+    "build": "pnpm -r build",
+    "build:client": "pnpm --filter client build",
+    "build:server": "pnpm --filter server build",
+    "start": "pnpm --filter server start",
+    "install:all": "pnpm install"
+  },
+  "packageManager": "pnpm@10.17.1",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
+
