@@ -208,6 +208,223 @@ router.get('/analytics', async (req, res) => {
   }
 });
 
+// GET /api/admin/users - Get paginated list of users with search
+router.get('/users', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const search = req.query.search || '';
+
+    const query = {};
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { university: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const users = await User.find(query)
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(skip)
+      .lean();
+
+    const total = await User.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: {
+        users,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error',
+    });
+  }
+});
+
+// PATCH /api/admin/users/:userId - Update user
+router.patch('/users/:userId', async (req, res) => {
+  try {
+    const { name, university } = req.body;
+
+    const updateData = {};
+    if (name) updateData.name = name.trim();
+    if (university !== undefined) updateData.university = university?.trim() || null;
+
+    const user = await User.findByIdAndUpdate(
+      req.params.userId,
+      updateData,
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: user,
+    });
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID',
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error',
+    });
+  }
+});
+
+// DELETE /api/admin/users/:userId - Delete user and related data
+router.delete('/users/:userId', async (req, res) => {
+  try {
+    const userId = req.params.userId;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Cascade delete: rooms owned by user, messages, tasks
+    await Room.deleteMany({ owner: userId });
+    await Message.deleteMany({ userId });
+    await Task.deleteMany({ createdBy: userId });
+    await Task.updateMany({ assignedTo: userId }, { assignedTo: null });
+    await Room.updateMany({ members: userId }, { $pull: { members: userId } });
+
+    await User.findByIdAndDelete(userId);
+
+    res.json({
+      success: true,
+      message: 'User and related data deleted successfully',
+    });
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID',
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error',
+    });
+  }
+});
+
+// GET /api/admin/rooms - Get paginated list of rooms with search
+router.get('/rooms', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const search = req.query.search || '';
+
+    const query = {};
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
+    }
+
+    const rooms = await Room.find(query)
+      .populate('owner', 'name email avatar')
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(skip)
+      .lean();
+
+    const roomsWithCounts = await Promise.all(
+      rooms.map(async (room) => {
+        const memberCount = room.members ? room.members.length : 0;
+        const messageCount = await Message.countDocuments({ roomId: room._id });
+        return {
+          ...room,
+          memberCount,
+          messageCount,
+        };
+      })
+    );
+
+    const total = await Room.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: {
+        rooms: roomsWithCounts,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error',
+    });
+  }
+});
+
+// DELETE /api/admin/rooms/:roomId - Delete room and related data
+router.delete('/rooms/:roomId', async (req, res) => {
+  try {
+    const roomId = req.params.roomId;
+
+    const room = await Room.findById(roomId);
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: 'Room not found',
+      });
+    }
+
+    // Cascade delete: messages and tasks
+    await Message.deleteMany({ roomId });
+    await Task.deleteMany({ roomId });
+
+    await Room.findByIdAndDelete(roomId);
+
+    res.json({
+      success: true,
+      message: 'Room and related data deleted successfully',
+    });
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid room ID',
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error',
+    });
+  }
+});
+
 // POST /api/admin/seed-users - Create sample users for demo
 router.post('/seed-users', async (req, res) => {
   try {
