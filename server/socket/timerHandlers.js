@@ -65,20 +65,22 @@ async function endSession(userId, roomId, sessionData) {
 
 export const initializeTimerHandlers = (io) => {
   // Timer tick - emit sync every 1 second for active timers
+  // This ensures all clients have synchronized timer state
   setInterval(() => {
     const now = Date.now();
     for (const [roomIdStr, state] of roomStates.entries()) {
-      if (state.isRunning && state.endsAt) {
+      // Only broadcast if there's an active timer (running or paused)
+      if (state.endsAt !== null && state.endsAt !== undefined) {
         let remaining = Math.max(0, state.endsAt - now);
         
-        // Auto-transition when timer reaches 0
-        if (remaining === 0) {
+        // Auto-transition when timer reaches 0 while running
+        if (remaining === 0 && state.isRunning) {
           state.isRunning = false;
           // Switch mode
           state.mode = state.mode === 'focus' ? 'break' : 'focus';
           
           // Auto-start break timer if in break mode
-          if (state.mode === 'break') {
+          if (state.mode === 'break' && state.durations) {
             const breakMs = state.durations.breakMinutes * 60 * 1000;
             state.endsAt = now + breakMs;
             state.isRunning = true;
@@ -87,23 +89,15 @@ export const initializeTimerHandlers = (io) => {
             // Focus ended, break ended - timer is complete
             state.endsAt = null;
             remaining = 0;
+            state.isRunning = false;
           }
         }
         
+        // Emit sync for both running and paused timers
         io.to(roomIdStr).emit('timer:sync', {
           mode: state.mode,
           endsAt: state.endsAt,
-          isRunning: state.isRunning,
-          remaining: remaining,
-          durations: state.durations,
-        });
-      } else if (!state.isRunning && state.endsAt) {
-        // Timer is paused, still emit sync with current remaining time
-        const remaining = Math.max(0, state.endsAt - now);
-        io.to(roomIdStr).emit('timer:sync', {
-          mode: state.mode,
-          endsAt: state.endsAt,
-          isRunning: false,
+          isRunning: state.isRunning && remaining > 0,
           remaining: remaining,
           durations: state.durations,
         });
@@ -169,8 +163,9 @@ export const initializeTimerHandlers = (io) => {
             breakMinutes,
           },
         };
+        // Broadcast immediately to all clients in room
         io.to(roomIdStr).emit('timer:sync', syncData);
-        logger.info(`Timer started in room ${roomIdStr}: ${focusMinutes}min focus / ${breakMinutes}min break`);
+        logger.info(`Timer started in room ${roomIdStr}: ${focusMinutes}min focus / ${breakMinutes}min break. Broadcasted to ${io.sockets.adapter.rooms.get(roomIdStr)?.size || 0} clients.`);
       } catch (error) {
         logger.error('Error starting timer:', error);
         socket.emit('error', { message: 'Couldn\'t start timer' });
@@ -220,14 +215,15 @@ export const initializeTimerHandlers = (io) => {
           // Adjust endsAt to maintain remaining time when resumed
           state.endsAt = now + remaining;
 
-          io.to(roomIdStr).emit('timer:sync', {
+          const pauseSyncData = {
             mode: state.mode,
             endsAt: state.endsAt,
             isRunning: false,
             remaining: remaining,
             durations: state.durations,
-          });
-          logger.info(`Timer paused in room ${roomIdStr}: ${Math.floor(remaining / 60000)}min remaining`);
+          };
+          io.to(roomIdStr).emit('timer:sync', pauseSyncData);
+          logger.info(`Timer paused in room ${roomIdStr}: ${Math.floor(remaining / 60000)}min remaining. Broadcasted to ${io.sockets.adapter.rooms.get(roomIdStr)?.size || 0} clients.`);
         }
       } catch (error) {
         logger.error('Error pausing timer:', error);
@@ -277,14 +273,15 @@ export const initializeTimerHandlers = (io) => {
             state.isRunning = true;
             state.endsAt = now + remaining;
 
-            io.to(roomIdStr).emit('timer:sync', {
+            const resumeSyncData = {
               mode: state.mode,
               endsAt: state.endsAt,
               isRunning: true,
               remaining: remaining,
               durations: state.durations,
-            });
-            logger.info(`Timer resumed in room ${roomIdStr}: ${Math.floor(remaining / 60000)}min remaining`);
+            };
+            io.to(roomIdStr).emit('timer:sync', resumeSyncData);
+            logger.info(`Timer resumed in room ${roomIdStr}: ${Math.floor(remaining / 60000)}min remaining. Broadcasted to ${io.sockets.adapter.rooms.get(roomIdStr)?.size || 0} clients.`);
           } else {
             // Timer expired while paused, reset it
             state.endsAt = null;
@@ -342,13 +339,15 @@ export const initializeTimerHandlers = (io) => {
 
         roomStates.delete(roomIdStr);
 
-        io.to(roomIdStr).emit('timer:sync', {
+        const resetSyncData = {
           mode: 'focus',
           endsAt: null,
           isRunning: false,
           remaining: 0,
           durations: null,
-        });
+        };
+        io.to(roomIdStr).emit('timer:sync', resetSyncData);
+        logger.info(`Timer reset in room ${roomIdStr}. Broadcasted to ${io.sockets.adapter.rooms.get(roomIdStr)?.size || 0} clients.`);
       } catch (error) {
         logger.error('Error resetting timer:', error);
         socket.emit('error', { message: 'Couldn\'t reset timer' });

@@ -49,6 +49,8 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
     if (!socket || !isConnected) return
 
     const handleSync = (state: TimerState) => {
+      console.log('Timer sync received:', state);
+      // Always update state with server sync - this ensures real-time updates
       setTimerState(state)
       
       // Check if we're waiting for timer start confirmation

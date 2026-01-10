@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Phone, PhoneOff, Loader2 } from 'lucide-react';
@@ -159,7 +159,7 @@ export function VideoCall({ roomId }: VideoCallProps) {
     }
   };
 
-  const handleLeaveCall = () => {
+  const handleLeaveCall = useCallback(() => {
     if (jitsiApiRef.current) {
       try {
         jitsiApiRef.current.dispose();
@@ -175,32 +175,40 @@ export function VideoCall({ roomId }: VideoCallProps) {
 
     setIsInCall(false);
     setError(null);
-  };
+  }, []);
 
   // Track roomId to cleanup only when navigating to different room
   const prevRoomIdRef = useRef<string | undefined>(undefined);
-  const mountedRef = useRef(true);
+  const isUnmountingRef = useRef(false);
 
   // Cleanup call when roomId changes (user navigated to different room)
   useEffect(() => {
-    if (prevRoomIdRef.current !== undefined && prevRoomIdRef.current !== roomId && jitsiApiRef.current) {
-      handleLeaveCall();
-    }
-    prevRoomIdRef.current = roomId;
-    mountedRef.current = true;
-  }, [roomId]);
-
-  // Cleanup only on component unmount (when navigating away from room page entirely, not on re-renders)
-  useEffect(() => {
-    return () => {
-      // Only cleanup if component is actually unmounting (not just re-rendering)
-      // Check if roomId is still the same (meaning this is a real unmount, not room change)
-      if (mountedRef.current && prevRoomIdRef.current === roomId && jitsiApiRef.current) {
+    // Only cleanup if roomId actually changed (not on initial mount)
+    if (prevRoomIdRef.current !== undefined && prevRoomIdRef.current !== roomId && prevRoomIdRef.current !== '') {
+      if (jitsiApiRef.current) {
+        console.log('Room ID changed from', prevRoomIdRef.current, 'to', roomId, '- cleaning up call');
         handleLeaveCall();
       }
-      mountedRef.current = false;
+    }
+    prevRoomIdRef.current = roomId;
+    isUnmountingRef.current = false;
+  }, [roomId, handleLeaveCall]);
+
+  // Cleanup only on component unmount (when navigating away from room page entirely)
+  useEffect(() => {
+    return () => {
+      // Mark as unmounting to prevent cleanup during re-renders
+      isUnmountingRef.current = true;
+      // Only cleanup if component is actually unmounting and call is active
+      // Small delay to ensure this is a real unmount, not just a re-render
+      setTimeout(() => {
+        if (isUnmountingRef.current && jitsiApiRef.current) {
+          console.log('Component unmounting, cleaning up call');
+          handleLeaveCall();
+        }
+      }, 0);
     };
-  }, []); // Empty deps - only run on mount/unmount
+  }, [handleLeaveCall]);
 
   return (
     <Card className="rounded-2xl">
