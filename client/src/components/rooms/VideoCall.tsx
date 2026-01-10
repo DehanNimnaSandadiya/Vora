@@ -179,7 +179,7 @@ export function VideoCall({ roomId }: VideoCallProps) {
 
   // Track roomId to cleanup only when navigating to different room
   const prevRoomIdRef = useRef<string | undefined>(undefined);
-  const isUnmountingRef = useRef(false);
+  const componentMountedRef = useRef(true);
 
   // Cleanup call when roomId changes (user navigated to different room)
   useEffect(() => {
@@ -191,22 +191,21 @@ export function VideoCall({ roomId }: VideoCallProps) {
       }
     }
     prevRoomIdRef.current = roomId;
-    isUnmountingRef.current = false;
   }, [roomId, handleLeaveCall]);
 
   // Cleanup only on component unmount (when navigating away from room page entirely)
   useEffect(() => {
+    componentMountedRef.current = true;
     return () => {
-      // Mark as unmounting to prevent cleanup during re-renders
-      isUnmountingRef.current = true;
-      // Only cleanup if component is actually unmounting and call is active
-      // Small delay to ensure this is a real unmount, not just a re-render
-      setTimeout(() => {
-        if (isUnmountingRef.current && jitsiApiRef.current) {
+      componentMountedRef.current = false;
+      // Only cleanup if component is actually unmounting (not re-rendering)
+      // Check after a microtask to ensure this is a real unmount
+      Promise.resolve().then(() => {
+        if (!componentMountedRef.current && jitsiApiRef.current) {
           console.log('Component unmounting, cleaning up call');
           handleLeaveCall();
         }
-      }, 0);
+      });
     };
   }, [handleLeaveCall]);
 
