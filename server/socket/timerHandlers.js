@@ -1,5 +1,7 @@
 import { logger } from '../utils/logger.js';
 import StudySession from '../models/StudySession.js';
+import User from '../models/User.js';
+import { checkAndAwardBadges } from '../utils/badges.js';
 
 // In-memory room state storage
 // Format: { roomId: { mode, endsAt, isRunning, durations: { focusMinutes, breakMinutes } } }
@@ -19,6 +21,15 @@ async function endSession(userId, roomId, sessionData) {
       mode: sessionData.mode,
       source: sessionData.source,
     });
+
+    // Update user stats and check badges for focus sessions
+    if (sessionData.mode === 'focus' && durationSeconds > 0) {
+      const durationMinutes = Math.floor(durationSeconds / 60);
+      await User.findByIdAndUpdate(userId, {
+        $inc: { 'stats.totalFocusMinutes': durationMinutes },
+      });
+      await checkAndAwardBadges(userId);
+    }
   } catch (error) {
     logger.error('Error ending study session:', error);
   }

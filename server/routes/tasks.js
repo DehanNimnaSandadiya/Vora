@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import Task from '../models/Task.js';
 import Room from '../models/Room.js';
 import { protect } from '../middleware/protect.js';
+import { checkAndAwardBadges } from '../utils/badges.js';
 
 const router = express.Router();
 
@@ -216,6 +217,7 @@ router.patch('/:taskId', updateTaskValidation, async (req, res) => {
 
     const { text, status, assignedTo, dueDate, priority, tags } = req.body;
 
+    const wasCompleted = task.status === 'done';
     if (text !== undefined) task.text = text;
     if (status !== undefined) task.status = status;
     if (assignedTo !== undefined) task.assignedTo = assignedTo || null;
@@ -224,6 +226,15 @@ router.patch('/:taskId', updateTaskValidation, async (req, res) => {
     if (tags !== undefined) task.tags = tags;
 
     await task.save();
+
+    // Check badges if task was just completed
+    if (status === 'done' && !wasCompleted && task.assignedTo) {
+      const User = (await import('../models/User.js')).default;
+      await User.findByIdAndUpdate(task.assignedTo, {
+        $inc: { 'stats.tasksCompleted': 1 },
+      });
+      await checkAndAwardBadges(task.assignedTo.toString());
+    }
 
     await task.populate('createdBy', 'name email avatar');
     if (task.assignedTo) {

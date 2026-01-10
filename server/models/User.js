@@ -115,7 +115,19 @@ const userSchema = new mongoose.Schema({
       type: Date,
       default: null,
     },
+    totalFocusMinutes: {
+      type: Number,
+      default: 0,
+    },
+    tasksCompleted: {
+      type: Number,
+      default: 0,
+    },
   },
+  badges: [{
+    type: String,
+    enum: ['first_session', 'streak_3', 'task_finisher', 'focused_5h'],
+  }],
   friends: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

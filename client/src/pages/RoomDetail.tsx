@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { PageContainer } from "@/lib/design-system"
-import { Users, Clock, Lock, Send, Activity } from "lucide-react"
+import { Users, Clock, Lock, Send, Activity, ChevronLeft, ChevronRight } from "lucide-react"
 import { useRoom } from "@/hooks/useRoom"
 import api from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
@@ -53,6 +53,12 @@ export function RoomDetail() {
   const [userStatus, setUserStatus] = useState<'studying' | 'break' | 'idle'>('idle')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
+  
+  // Side panel state from localStorage
+  const [sidePanelOpen, setSidePanelOpen] = useState(() => {
+    const saved = localStorage.getItem('vora-sidepanel-open')
+    return saved !== null ? saved === 'true' : true
+  })
 
   useEffect(() => {
     if (!roomId) return
@@ -120,6 +126,12 @@ export function RoomDetail() {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
+  const toggleSidePanel = () => {
+    const newState = !sidePanelOpen
+    setSidePanelOpen(newState)
+    localStorage.setItem('vora-sidepanel-open', String(newState))
+  }
+
   if (loading || !room) {
     return (
       <PageContainer>
@@ -160,8 +172,8 @@ export function RoomDetail() {
           />
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-12">
-          <div className="lg:col-span-3 space-y-6">
+        <div className="grid gap-6 lg:grid-cols-12 relative">
+          <div className={`lg:col-span-3 space-y-6 transition-all duration-300 ${sidePanelOpen ? 'block' : 'hidden lg:block'}`}>
             <Card className="rounded-2xl">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -267,16 +279,29 @@ export function RoomDetail() {
             </Card>
           </div>
 
-          <div className="lg:col-span-5 space-y-6">
+          <div className={`${sidePanelOpen ? 'lg:col-span-5' : 'lg:col-span-9'} space-y-6 transition-all duration-300`}>
             <TimerWidget roomId={roomId || ''} isRoomJoined={isRoomJoined} />
             <VideoCall roomId={roomId || ''} />
             <TasksPanel roomId={roomId || ''} />
           </div>
 
-          <div className="lg:col-span-4">
+          <div className={`${sidePanelOpen ? 'lg:col-span-4' : 'lg:col-span-3'} transition-all duration-300`}>
             <Card className="rounded-2xl flex flex-col h-[600px]">
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Chat</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleSidePanel}
+                  className="h-8 w-8"
+                  aria-label={sidePanelOpen ? 'Collapse side panel' : 'Expand side panel'}
+                >
+                  {sidePanelOpen ? (
+                    <ChevronRight className="h-4 w-4" />
+                  ) : (
+                    <ChevronLeft className="h-4 w-4" />
+                  )}
+                </Button>
               </CardHeader>
               <CardContent className="flex-1 flex flex-col min-h-0">
                 <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
@@ -345,6 +370,21 @@ export function RoomDetail() {
               </CardContent>
             </Card>
           </div>
+          
+          {/* Toggle button for mobile/small screens */}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={toggleSidePanel}
+            className="fixed bottom-4 right-4 lg:hidden z-50 rounded-full h-12 w-12 shadow-lg"
+            aria-label={sidePanelOpen ? 'Hide side panel' : 'Show side panel'}
+          >
+            {sidePanelOpen ? (
+              <ChevronRight className="h-5 w-5" />
+            ) : (
+              <ChevronLeft className="h-5 w-5" />
+            )}
+          </Button>
         </div>
       </div>
     </PageContainer>
