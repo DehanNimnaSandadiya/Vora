@@ -119,7 +119,11 @@ export function TasksPanel({ roomId }: TasksPanelProps) {
 
   const handleUpdateStatus = async (taskId: string, status: 'todo' | 'doing' | 'done') => {
     try {
-      await api.patch(`/rooms/${roomId}/tasks/${taskId}`, { status })
+      await api.patch(`/tasks/${taskId}`, { status })
+      toast({
+        title: 'Task updated',
+        description: 'Task status updated successfully',
+      })
     } catch (err: any) {
       toast({
         title: 'Error',
@@ -131,7 +135,7 @@ export function TasksPanel({ roomId }: TasksPanelProps) {
 
   const handleDeleteTask = async (taskId: string) => {
     try {
-      await api.delete(`/rooms/${roomId}/tasks/${taskId}`)
+      await api.delete(`/tasks/${taskId}`)
       toast({
         title: 'Task deleted',
         description: 'Task removed',

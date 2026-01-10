@@ -172,7 +172,7 @@ router.post('/:roomId/tasks', createTaskValidation, async (req, res) => {
 });
 
 // Update task
-router.patch('/tasks/:taskId', updateTaskValidation, async (req, res) => {
+router.patch('/:taskId', updateTaskValidation, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -252,7 +252,7 @@ router.patch('/tasks/:taskId', updateTaskValidation, async (req, res) => {
 });
 
 // Delete task
-router.delete('/tasks/:taskId', async (req, res) => {
+router.delete('/:taskId', async (req, res) => {
   try {
     const task = await Task.findById(req.params.taskId);
 

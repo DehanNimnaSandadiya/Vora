@@ -40,31 +40,35 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
   const { toast } = useToast()
 
   useEffect(() => {
-    if (!socket || !isConnected) return
+    if (!socket || !isConnected || !isRoomJoined) return
 
     const handleSync = (state: TimerState) => {
       setTimerState(state)
     }
 
-    const handleRoomJoined = (data: { roomId: string }) => {
-      // Only request sync if this is for our room
-      if (data.roomId === roomId) {
-        socket.emit('timer:request-sync', { roomId })
+    const handleError = (error: { message: string }) => {
+      if (error.message && error.message.includes('Not in this room')) {
+        // Room join might not be complete, will retry when isRoomJoined becomes true
+        return
       }
+      toast({
+        title: 'Timer error',
+        description: error.message || 'Something went wrong',
+        variant: 'destructive',
+      })
     }
 
     socket.on('timer:sync', handleSync)
-    socket.on('room:joined', handleRoomJoined)
+    socket.on('error', handleError)
     
-    // Request sync immediately (server will handle gracefully if not in room yet)
-    // The room:joined handler will also trigger a sync when join completes
+    // Request sync when room is joined
     socket.emit('timer:request-sync', { roomId })
 
     return () => {
       socket.off('timer:sync', handleSync)
-      socket.off('room:joined', handleRoomJoined)
+      socket.off('error', handleError)
     }
-  }, [socket, isConnected, roomId])
+  }, [socket, isConnected, roomId, isRoomJoined, toast])
 
   // Update display time
   useEffect(() => {

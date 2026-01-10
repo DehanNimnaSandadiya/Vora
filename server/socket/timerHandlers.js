@@ -43,6 +43,12 @@ export const initializeTimerHandlers = (io) => {
             const breakMs = state.durations.breakMinutes * 60 * 1000;
             state.endsAt = now + breakMs;
             state.isRunning = true;
+            // Recalculate remaining for break timer
+            remaining = breakMs;
+          } else {
+            // Focus ended, break ended - timer is complete
+            state.endsAt = null;
+            remaining = 0;
           }
         }
         
@@ -240,7 +246,6 @@ export const initializeTimerHandlers = (io) => {
         const { roomId } = data;
         
         if (!roomId) {
-          // Return empty state if no roomId provided
           socket.emit('timer:sync', {
             mode: 'focus',
             endsAt: null,
@@ -248,6 +253,14 @@ export const initializeTimerHandlers = (io) => {
             remaining: 0,
             durations: null,
           });
+          return;
+        }
+
+        // Check if user is in the room (but allow if join is in progress)
+        const isInRoom = socket.currentRoomId === roomId && socket.rooms.has(roomId);
+        
+        if (!isInRoom && socket.currentRoomId) {
+          // User is in a different room, don't sync
           return;
         }
 
@@ -276,7 +289,6 @@ export const initializeTimerHandlers = (io) => {
         }
       } catch (error) {
         logger.error('Error syncing timer:', error);
-        // Emit empty state on error instead of failing silently
         socket.emit('timer:sync', {
           mode: 'focus',
           endsAt: null,
