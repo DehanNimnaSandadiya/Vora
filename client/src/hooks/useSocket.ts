@@ -49,20 +49,22 @@ export const useSocket = () => {
       return;
     }
 
-    // Create socket connection
+    // Create socket connection with settings optimized for Render free tier (cold starts)
     const newSocket = io(SOCKET_URL, {
       auth: {
         token,
       },
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'], // Try polling first (better for Render)
       reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5,
+      reconnectionDelay: 2000, // Wait 2s before first reconnect (give Render time to wake)
+      reconnectionDelayMax: 10000, // Max 10s delay between attempts
+      reconnectionAttempts: Infinity, // Keep trying indefinitely (Render can take 60s+ to wake)
       // Prevent multiple connections
       forceNew: false,
-      // Timeout for connection
-      timeout: 20000,
+      // Longer timeout for Render cold starts (can take 30-60 seconds)
+      timeout: 60000, // 60 seconds
+      // Enable upgrade from polling to websocket after connection
+      upgrade: true,
     });
 
     let hasConnected = false;
@@ -112,9 +114,19 @@ export const useSocket = () => {
     });
 
     newSocket.on('connect_error', (error) => {
-      // Only log connection errors, don't show toast for normal reconnection attempts
+      // Suppress timeout errors - expected on Render free tier (cold starts take 30-60s)
+      const isTimeout = error.message.includes('timeout') || error.message.includes('xhr poll error');
+      
+      if (isTimeout) {
+        // Don't log timeout errors - they're normal for Render free tier
+        console.debug('Socket connection timeout (Render cold start - this is normal)');
+        return;
+      }
+      
+      // Only log other connection errors, don't show toast for normal reconnection attempts
       console.debug('Socket connection error:', error);
-      // Only show toast for authentication errors or persistent connection failures
+      
+      // Only show toast for authentication errors
       if (error.message.includes('Authentication')) {
         toast({
           title: 'Authentication failed',
@@ -122,7 +134,7 @@ export const useSocket = () => {
           variant: 'destructive',
         });
       }
-      // Don't show toast for network errors - socket.io will auto-retry
+      // Don't show toast for network/timeout errors - socket.io will auto-retry
     });
 
     newSocket.on('error', (error) => {

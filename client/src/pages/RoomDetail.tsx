@@ -144,8 +144,9 @@ export function RoomDetail() {
                 </Badge>
               )}
               {!isConnected && (
-                <Badge variant="outline" className="rounded-2xl bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
-                  Connecting to server...
+                <Badge variant="outline" className="rounded-2xl bg-yellow-500/20 text-yellow-400 border-yellow-500/30 animate-pulse">
+                  <Activity className="h-3 w-3 mr-1" />
+                  Backend waking up... (this is normal on free tier)
                 </Badge>
               )}
             </div>
