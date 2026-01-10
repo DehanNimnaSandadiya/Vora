@@ -5,7 +5,15 @@ import { useToast } from '@/hooks/useToast';
 
 // Socket.io needs base URL without /api
 const getSocketUrl = () => {
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const apiUrl = import.meta.env.VITE_API_URL;
+  if (!apiUrl) {
+    if (import.meta.env.DEV) {
+      return 'http://localhost:5000';
+    }
+    // Production without VITE_API_URL - this should not happen
+    console.error('VITE_API_URL is not set in production!');
+    return window.location.origin;
+  }
   // Remove /api suffix if present
   return apiUrl.replace(/\/api$/, '');
 };

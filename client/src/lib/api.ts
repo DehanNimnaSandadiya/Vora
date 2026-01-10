@@ -1,7 +1,20 @@
 import axios from 'axios';
 
 const getApiUrl = () => {
-  const envApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const envApiUrl = import.meta.env.VITE_API_URL;
+  
+  // In production, VITE_API_URL must be set (configured in Vercel)
+  // For development, fallback to localhost
+  if (!envApiUrl) {
+    if (import.meta.env.DEV) {
+      return 'http://localhost:5000/api';
+    }
+    // Production without VITE_API_URL - this should not happen
+    // Use current origin as fallback (won't work if backend is on different domain)
+    console.error('VITE_API_URL is not set in production!');
+    return '/api';
+  }
+  
   // Remove /api suffix if present, then add it back for consistency
   const baseUrl = envApiUrl.replace(/\/api$/, '');
   return `${baseUrl}/api`;

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageContainer } from '@/lib/design-system';
+import api from '@/lib/api';
 
 export function AuthCallback() {
   const [searchParams] = useSearchParams();
@@ -21,14 +22,10 @@ export function AuthCallback() {
       // Store token
       localStorage.setItem('token', token);
 
-      // Fetch user data
-      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/me`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-        .then((res) => res.json())
-        .then((data) => {
+      // Fetch user data using api instance
+      api.get('/auth/me')
+        .then((response) => {
+          const data = response.data;
           if (data.success && data.user) {
             const userWithRole = { ...data.user, role: data.user.role || 'user' };
             localStorage.setItem('user', JSON.stringify(userWithRole));
