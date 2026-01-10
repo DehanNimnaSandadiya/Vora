@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Play, Pause, RotateCcw, Clock } from 'lucide-react'
@@ -37,6 +37,9 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
     durations: null,
   })
   const [displayTime, setDisplayTime] = useState('00:00')
+  const [isStarting, setIsStarting] = useState(false)
+  const lastErrorRef = useRef<string | null>(null)
+  const errorToastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -47,22 +50,43 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
     }
 
     const handleError = (error: { message: string }) => {
-      if (error.message && (error.message.includes('Not in this room') || error.message.includes('join the room'))) {
-        // Room join might not be complete
+      const errorMsg = error.message || ''
+      
+      // Debounce duplicate errors (same error within 2 seconds)
+      if (errorMsg === lastErrorRef.current) {
+        return
+      }
+      lastErrorRef.current = errorMsg
+      
+      // Clear previous error toast timeout
+      if (errorToastRef.current) {
+        clearTimeout(errorToastRef.current)
+      }
+      
+      if (errorMsg.includes('Not in this room') || errorMsg.includes('join the room')) {
+        // Room join might not be complete - only show toast if room should be joined
         if (isRoomJoined) {
-          toast({
-            title: 'Please wait',
-            description: 'Room connection in progress. Please try again in a moment.',
-            variant: 'destructive',
-          })
+          errorToastRef.current = setTimeout(() => {
+            toast({
+              title: 'Please wait',
+              description: 'Room connection in progress. Please try again in a moment.',
+              variant: 'destructive',
+            })
+            lastErrorRef.current = null
+          }, 1000)
         }
         return
       }
-      toast({
-        title: 'Timer error',
-        description: error.message || 'Something went wrong',
-        variant: 'destructive',
-      })
+      
+      // Show other errors (debounced)
+      errorToastRef.current = setTimeout(() => {
+        toast({
+          title: 'Timer error',
+          description: errorMsg || 'Something went wrong',
+          variant: 'destructive',
+        })
+        lastErrorRef.current = null
+      }, 500)
     }
 
     socket.on('timer:sync', handleSync)
@@ -76,6 +100,10 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
     return () => {
       socket.off('timer:sync', handleSync)
       socket.off('error', handleError)
+      if (errorToastRef.current) {
+        clearTimeout(errorToastRef.current)
+      }
+      lastErrorRef.current = null
     }
   }, [socket, isConnected, roomId, isRoomJoined, toast])
 
@@ -109,6 +137,8 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
   }, [timerState])
 
   const handleStart = async (focusMinutes: number, breakMinutes: number) => {
+    if (isStarting) return // Prevent multiple simultaneous starts
+    
     if (!socket || !isConnected) {
       toast({
         title: 'Not connected',
@@ -118,29 +148,44 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
       return
     }
 
-    if (!isRoomJoined) {
-      // Wait a bit for room join to complete, then retry once
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Check again after wait
-      if (!isRoomJoined) {
-        toast({
-          title: 'Please wait',
-          description: 'Joining room... Please try again in a moment.',
-          variant: 'destructive',
-        })
-        return
-      }
-    }
+    setIsStarting(true)
 
-    // Emit timer start
-    socket.emit('timer:start', { roomId, focusMinutes, breakMinutes })
-    
-    // Show immediate feedback
-    toast({
-      title: 'Timer starting',
-      description: `${focusMinutes} minute focus session`,
-    })
+    try {
+      if (!isRoomJoined) {
+        // Wait for room join to complete, with timeout
+        let attempts = 0
+        const maxAttempts = 6 // 3 seconds total
+        
+        while (!isRoomJoined && attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+          attempts++
+        }
+        
+        if (!isRoomJoined) {
+          toast({
+            title: 'Please wait',
+            description: 'Joining room... Please try again in a moment.',
+            variant: 'destructive',
+          })
+          setIsStarting(false)
+          return
+        }
+      }
+
+      // Emit timer start
+      socket.emit('timer:start', { roomId, focusMinutes, breakMinutes })
+      
+      // Show immediate feedback
+      toast({
+        title: 'Timer starting',
+        description: `${focusMinutes} minute focus session`,
+      })
+    } finally {
+      // Reset starting flag after a short delay to prevent rapid clicks
+      setTimeout(() => {
+        setIsStarting(false)
+      }, 1000)
+    }
   }
 
   const handlePause = () => {
@@ -208,7 +253,7 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
                     variant="outline"
                     size="sm"
                     onClick={() => handleStart(preset.focus, preset.break)}
-                    disabled={!isConnected || !isRoomJoined}
+                    disabled={!isConnected || !isRoomJoined || isStarting}
                     className="rounded-2xl"
                   >
                     {preset.label}

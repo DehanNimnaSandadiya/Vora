@@ -48,12 +48,23 @@ export const useRoom = (roomId: string | undefined) => {
       }
     };
 
+    const handleRoomError = (error: { message: string }) => {
+      // Only log room join errors, don't spam console
+      if (error.message && !error.message.includes('Already')) {
+        console.debug('Room join error:', error.message);
+      }
+    };
+
     socket.on('room:joined', handleRoomJoined);
+    socket.on('error', handleRoomError);
     socket.emit('room:join', { roomId });
 
     return () => {
       socket.off('room:joined', handleRoomJoined);
-      socket.emit('room:leave');
+      socket.off('error', handleRoomError);
+      if (socket.connected) {
+        socket.emit('room:leave');
+      }
       setIsRoomJoined(false);
     };
   }, [socket, isConnected, roomId]);
