@@ -64,7 +64,8 @@ GOOGLE_CALLBACK_URL=https://vora-backend.onrender.com/auth/google/callback
    - **Framework:** Vite
    - **Root Directory:** `client` ⚠️
    - **Build:** `cd .. && pnpm install && cd client && pnpm build`
-   - **Output:** `client/dist`
+   - **Output:** `dist` (relative to root)
+   - **Install:** `cd .. && pnpm install`
 
 5. Environment Variable:
 ```
