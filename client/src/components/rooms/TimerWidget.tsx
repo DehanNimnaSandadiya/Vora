@@ -40,6 +40,9 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
   const [isStarting, setIsStarting] = useState(false)
   const lastErrorRef = useRef<string | null>(null)
   const errorToastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const confirmHandlerRef = useRef<((state: TimerState) => void) | null>(null)
+  const isStartingRef = useRef(false)
+  const startTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -47,6 +50,11 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
 
     const handleSync = (state: TimerState) => {
       setTimerState(state)
+      
+      // Check if we're waiting for timer start confirmation
+      if (isStartingRef.current && confirmHandlerRef.current) {
+        confirmHandlerRef.current(state)
+      }
     }
 
     const handleError = (error: { message: string }) => {
@@ -107,6 +115,9 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
       }
       if (errorToastRef.current) {
         clearTimeout(errorToastRef.current)
+      }
+      if (startTimeoutRef.current) {
+        clearTimeout(startTimeoutRef.current)
       }
       lastErrorRef.current = null
     }
@@ -213,48 +224,41 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
         return
       }
 
-      // Emit timer start and wait for confirmation
-      let timerStarted = false
-      const startTimeout = setTimeout(() => {
-        if (!timerStarted) {
+      // Set up confirmation handler
+      let timerConfirmed = false
+      
+      // Clear any existing timeout
+      if (startTimeoutRef.current) {
+        clearTimeout(startTimeoutRef.current)
+      }
+      
+      startTimeoutRef.current = setTimeout(() => {
+        if (!timerConfirmed) {
           setIsStarting(false)
+          confirmHandlerRef.current = null
           toast({
             title: 'Timer start timeout',
-            description: 'Server did not respond. Please try again.',
+            description: 'Server did not respond. Check if timer started on display.',
             variant: 'destructive',
           })
         }
-      }, 5000)
+      }, 4000)
 
-      const confirmHandler = (state: TimerState) => {
-        // Timer started if endsAt is set (not null) or if it's running
-        if ((state.endsAt !== null && state.endsAt !== undefined) || state.isRunning) {
-          timerStarted = true
-          clearTimeout(startTimeout)
-          socket.off('timer:sync', confirmHandler)
+      confirmHandlerRef.current = (state: TimerState) => {
+        // Timer started successfully - has endsAt timestamp (not null/undefined)
+        if (state.endsAt !== null && state.endsAt !== undefined) {
+          timerConfirmed = true
+          if (startTimeoutRef.current) {
+            clearTimeout(startTimeoutRef.current)
+            startTimeoutRef.current = null
+          }
           setIsStarting(false)
+          confirmHandlerRef.current = null
         }
       }
-
-      // Set up confirmation handler BEFORE emitting
-      socket.on('timer:sync', confirmHandler)
       
       // Emit timer start
       socket.emit('timer:start', { roomId, focusMinutes, breakMinutes })
-      
-      // Show immediate feedback
-      toast({
-        title: 'Starting timer...',
-        description: `${focusMinutes} minute focus session`,
-      })
-      
-      // Cleanup handler after timeout
-      setTimeout(() => {
-        socket.off('timer:sync', confirmHandler)
-        if (!timerStarted) {
-          setIsStarting(false)
-        }
-      }, 5000)
     } catch (error: any) {
       toast({
         title: 'Timer failed to start',
