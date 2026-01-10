@@ -35,17 +35,26 @@ import { initializeRoomHandlers } from './socket/roomHandlers.js';
 import { initializeTimerHandlers } from './socket/timerHandlers.js';
 
 const app = express();
+
+// Normalize CLIENT_URL - remove trailing slash for CORS matching
+const normalizeUrl = (url) => {
+  if (!url) return 'http://localhost:5173';
+  return url.replace(/\/+$/, ''); // Remove trailing slashes
+};
+
+const CLIENT_URL = normalizeUrl(process.env.CLIENT_URL);
+
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: CLIENT_URL,
     methods: ['GET', 'POST'],
     credentials: true,
     allowedHeaders: ['Authorization', 'Content-Type'],
   },
   // Improve connection stability
   pingTimeout: 60000,
-  pingInterval: 25000,
+  pingInterval: 25025,
   transports: ['websocket', 'polling'],
 });
 
@@ -57,9 +66,24 @@ const PORT = process.env.PORT || 5000;
 // Security middleware
 app.use(helmetConfig);
 
-// CORS - strict with CLIENT_URL
+// CORS - strict with CLIENT_URL (normalized, handles trailing slashes)
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Normalize both incoming origin and allowed origin (remove trailing slashes)
+    const normalizedOrigin = normalizeUrl(origin);
+    const normalizedAllowed = CLIENT_URL;
+    
+    // Check if normalized origins match
+    if (normalizedOrigin === normalizedAllowed) {
+      callback(null, true);
+    } else {
+      logger.warn(`CORS blocked: ${origin} (normalized: ${normalizedOrigin}) not matching ${normalizedAllowed}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -153,7 +177,7 @@ connectDB()
     httpServer.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`📡 Socket.io server ready`);
-      logger.info(`🌐 Client URL: ${process.env.CLIENT_URL || 'http://localhost:5173'}`);
+      logger.info(`🌐 Client URL: ${CLIENT_URL}`);
     });
   })
   .catch((error) => {

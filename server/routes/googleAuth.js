@@ -16,16 +16,18 @@ router.get(
 router.get(
   '/google/callback',
   passport.authenticate('google', {
-    failureRedirect: `${process.env.CLIENT_URL}/login?error=oauth_failed`,
+    failureRedirect: `${process.env.CLIENT_URL?.replace(/\/+$/, '') || 'http://localhost:5173'}/login?error=oauth_failed`,
     session: false,
   }),
   (req, res) => {
     try {
       const token = generateToken(req.user._id, 'user');
-      const redirectUrl = `${process.env.CLIENT_URL}/auth/callback?token=${token}`;
+      const clientUrl = process.env.CLIENT_URL?.replace(/\/+$/, '') || 'http://localhost:5173';
+      const redirectUrl = `${clientUrl}/auth/callback?token=${token}`;
       res.redirect(redirectUrl);
     } catch (error) {
-      res.redirect(`${process.env.CLIENT_URL}/login?error=token_generation_failed`);
+      const clientUrl = process.env.CLIENT_URL?.replace(/\/+$/, '') || 'http://localhost:5173';
+      res.redirect(`${clientUrl}/login?error=token_generation_failed`);
     }
   }
 );
