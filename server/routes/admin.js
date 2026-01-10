@@ -102,5 +102,4 @@ router.post('/seed-users', async (req, res) => {
   }
 });
 
-// ... existing code ...
-// (Keep all existing routes from the file)
+export default router;

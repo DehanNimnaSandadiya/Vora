@@ -12,15 +12,15 @@ const getGoogleAuthUrl = () => {
   const apiUrl = import.meta.env.VITE_API_URL;
   if (!apiUrl) {
     if (import.meta.env.DEV) {
-      return 'http://localhost:5000/auth/google';
+      return 'http://localhost:5000/api/auth/google';
     }
     // Production without VITE_API_URL - this should not happen
     console.error('VITE_API_URL is not set in production!');
-    return '/auth/google';
+    return '/api/auth/google';
   }
-  const baseUrl = apiUrl.replace(/\/api$/, '') // Remove /api suffix if present
-  return `${baseUrl}/auth/google`
-}
+  // Standard route: /api/auth/google
+  return `${apiUrl}/auth/google`;
+};
 
 const GOOGLE_AUTH_URL = getGoogleAuthUrl()
 

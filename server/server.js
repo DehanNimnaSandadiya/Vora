@@ -72,7 +72,11 @@ const io = new Server(httpServer, {
 // Socket.io authentication
 io.use(socketAuth);
 
+// PORT handling - Render sets PORT automatically, fallback for local dev only
 const PORT = process.env.PORT || 5000;
+if (!process.env.PORT && process.env.NODE_ENV === 'production') {
+  logger.warn('⚠️  PORT environment variable not set in production. Using default 5000.');
+}
 
 // Security middleware
 app.use(helmetConfig);
@@ -129,12 +133,13 @@ app.set('io', io);
 
 // Routes
 app.use('/health', healthRouter);
-// Mount auth routes at both /api/auth and /auth for compatibility
+// Mount Google OAuth routes at /api/auth (standardized route)
+app.use('/api/auth', googleAuthRouter); // Google OAuth routes (/api/auth/google, /api/auth/google/callback)
+// Mount auth routes at /api/auth (general auth routes)
 app.use('/api/auth', authRateLimit, authRouter); // Rate limit auth routes
-// Mount Google OAuth routes first at /auth (more specific routes)
+// Also mount at /auth for backward compatibility
 app.use('/auth', googleAuthRouter); // Google OAuth routes (/auth/google, /auth/google/callback)
-// Then mount general auth routes at /auth (will handle /auth/register, /auth/login, /auth/me)
-app.use('/auth', authRateLimit, authRouter); // Also mount at /auth for client compatibility
+app.use('/auth', authRateLimit, authRouter); // General auth routes
 app.use('/api/rooms', apiRateLimit, roomsRouter);
 app.use('/rooms', apiRateLimit, roomsRouter); // Also mount at /rooms for client compatibility
 app.use('/api/users', apiRateLimit, usersRouter);
@@ -200,13 +205,17 @@ app.use('/api/*', (req, res) => {
   });
 });
 
-// Connect to MongoDB
+// Connect to MongoDB and start server
 connectDB()
   .then(() => {
-    httpServer.listen(PORT, () => {
-      logger.info(`🚀 Server running on port ${PORT}`);
+    httpServer.listen(PORT, '0.0.0.0', () => {
+      logger.info(`🚀 Server running on port ${PORT} (http://0.0.0.0:${PORT})`);
       logger.info(`📡 Socket.io server ready`);
       logger.info(`🌐 Client URL: ${CLIENT_URL}`);
+      if (process.env.GOOGLE_CLIENT_ID) {
+        const callbackUrl = process.env.GOOGLE_CALLBACK_URL || `${process.env.SERVER_URL || `http://localhost:${PORT}`}/api/auth/google/callback`;
+        logger.info(`🔐 Google OAuth callback: ${callbackUrl}`);
+      }
     });
   })
   .catch((error) => {
