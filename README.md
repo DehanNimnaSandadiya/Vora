@@ -44,6 +44,9 @@ This is a monorepo containing:
 
    # Session Secret (for passport sessions)
    SESSION_SECRET=your-session-secret-key-change-this-in-production
+
+   # Jitsi Meet (optional - defaults to meet.jit.si)
+   JITSI_DOMAIN=meet.jit.si
    ```
 
    **Google OAuth Setup:**

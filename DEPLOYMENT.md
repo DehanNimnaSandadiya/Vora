@@ -292,6 +292,12 @@ Click **"Add Environment Variable"** for each of these:
    - Replace `vora-backend` with your actual service name if different
    - Click **"Save"**
 
+10. **JITSI_DOMAIN** (Optional - defaults to meet.jit.si for video calling)
+    - Key: `JITSI_DOMAIN`
+    - Value: `meet.jit.si` (public instance, no API key needed)
+    - Click **"Save"**
+    - This enables video/voice calling in study rooms
+
 **How to Generate Random Secrets (Windows PowerShell):**
 
 Open PowerShell and run this command twice (once for JWT_SECRET, once for SESSION_SECRET):
@@ -704,11 +710,13 @@ SESSION_SECRET=<40-char random string>
 GOOGLE_CLIENT_ID=<from Google Console>
 GOOGLE_CLIENT_SECRET=<from Google Console>
 GOOGLE_CALLBACK_URL=https://your-backend.onrender.com/auth/google/callback
+JITSI_DOMAIN=meet.jit.si (optional, defaults to meet.jit.si)
 ```
 
 **Vercel (Frontend):**
 ```
-VITE_API_URL=https://your-backend.onrender.com
+VITE_API_URL=https://your-backend.onrender.com/api
+VITE_JITSI_DOMAIN=meet.jit.si (optional)
 ```
 
 ---

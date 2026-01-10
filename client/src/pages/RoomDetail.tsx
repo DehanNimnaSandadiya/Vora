@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/useToast"
 import { TimerWidget } from "@/components/rooms/TimerWidget"
 import { TasksPanel } from "@/components/rooms/TasksPanel"
 import { InviteDialog } from "@/components/rooms/InviteDialog"
+import { VideoCall } from "@/components/rooms/VideoCall"
 
 interface Room {
   _id: string
@@ -267,6 +268,7 @@ export function RoomDetail() {
 
           <div className="lg:col-span-5 space-y-6">
             <TimerWidget roomId={roomId || ''} isRoomJoined={isRoomJoined} />
+            <VideoCall roomId={roomId || ''} />
             <TasksPanel roomId={roomId || ''} />
           </div>
 

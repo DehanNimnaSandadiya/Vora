@@ -1,5 +1,6 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
+import crypto from 'crypto';
 import Room from '../models/Room.js';
 import Message from '../models/Message.js';
 import Task from '../models/Task.js';
@@ -309,6 +310,55 @@ router.get('/:id/tasks', async (req, res) => {
     res.json({
       success: true,
       tasks,
+    });
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid room ID',
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error',
+    });
+  }
+});
+
+// Get Jitsi call details for a room
+router.get('/:id/call', async (req, res) => {
+  try {
+    const room = await Room.findById(req.params.id);
+
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: 'Room not found',
+      });
+    }
+
+    // Check if user is a member
+    const isMember = room.owner._id.toString() === req.user._id.toString() ||
+                     room.members.some(memberId => memberId.toString() === req.user._id.toString());
+
+    if (!isMember && room.isPrivate) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
+    const domain = process.env.JITSI_DOMAIN || 'meet.jit.si';
+    
+    // Generate deterministic room name: vora-<roomId>-<shortHash>
+    const roomIdStr = req.params.id.toString();
+    const hash = crypto.createHash('sha256').update(roomIdStr).digest('hex').substring(0, 8);
+    const roomName = `vora-${roomIdStr}-${hash}`;
+
+    res.json({
+      success: true,
+      domain,
+      roomName,
     });
   } catch (error) {
     if (error.name === 'CastError') {
