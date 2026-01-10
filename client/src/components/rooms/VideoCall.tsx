@@ -177,24 +177,30 @@ export function VideoCall({ roomId }: VideoCallProps) {
     setError(null);
   };
 
-  // Track roomId changes to cleanup only when navigating to different room
+  // Track roomId to cleanup only when navigating to different room
   const prevRoomIdRef = useRef<string | undefined>(undefined);
+  const mountedRef = useRef(true);
 
+  // Cleanup call when roomId changes (user navigated to different room)
   useEffect(() => {
-    // Cleanup call only when roomId actually changes (user navigated to different room)
     if (prevRoomIdRef.current !== undefined && prevRoomIdRef.current !== roomId && jitsiApiRef.current) {
       handleLeaveCall();
     }
     prevRoomIdRef.current = roomId;
-    
-    // Cleanup on component unmount (when navigating away from room page entirely)
+    mountedRef.current = true;
+  }, [roomId]);
+
+  // Cleanup only on component unmount (when navigating away from room page entirely, not on re-renders)
+  useEffect(() => {
     return () => {
-      // Only cleanup if we're still on the same room (actual unmount, not room change)
-      if (prevRoomIdRef.current === roomId && jitsiApiRef.current) {
+      // Only cleanup if component is actually unmounting (not just re-rendering)
+      // Check if roomId is still the same (meaning this is a real unmount, not room change)
+      if (mountedRef.current && prevRoomIdRef.current === roomId && jitsiApiRef.current) {
         handleLeaveCall();
       }
+      mountedRef.current = false;
     };
-  }, [roomId]);
+  }, []); // Empty deps - only run on mount/unmount
 
   return (
     <Card className="rounded-2xl">
