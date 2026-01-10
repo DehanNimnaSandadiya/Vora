@@ -49,9 +49,14 @@ export const useRoom = (roomId: string | undefined) => {
     };
 
     const handleRoomError = (error: { message: string }) => {
-      // Only log room join errors, don't spam console
-      if (error.message && !error.message.includes('Already')) {
-        console.debug('Room join error:', error.message);
+      // Completely suppress "join the room" errors - they're expected during room join process
+      const errorMsg = error.message || ''
+      if (errorMsg.includes('join the room') || errorMsg.includes('Not in this room') || errorMsg.includes('Please join')) {
+        return // Silently ignore
+      }
+      // Only log other room join errors
+      if (errorMsg && !errorMsg.includes('Already')) {
+        console.debug('Room join error:', errorMsg);
       }
     };
 

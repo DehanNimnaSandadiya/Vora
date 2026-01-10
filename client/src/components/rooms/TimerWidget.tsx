@@ -52,7 +52,13 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
     const handleError = (error: { message: string }) => {
       const errorMsg = error.message || ''
       
-      // Debounce duplicate errors (same error within 2 seconds)
+      // Completely suppress "join the room" errors - they're expected during room join process
+      if (errorMsg.includes('Not in this room') || errorMsg.includes('join the room') || errorMsg.includes('Please join')) {
+        // Silently ignore these errors - they'll resolve when room join completes
+        return
+      }
+      
+      // Debounce duplicate errors (same error within 3 seconds)
       if (errorMsg === lastErrorRef.current) {
         return
       }
@@ -63,43 +69,42 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
         clearTimeout(errorToastRef.current)
       }
       
-      if (errorMsg.includes('Not in this room') || errorMsg.includes('join the room')) {
-        // Room join might not be complete - only show toast if room should be joined
-        if (isRoomJoined) {
-          errorToastRef.current = setTimeout(() => {
-            toast({
-              title: 'Please wait',
-              description: 'Room connection in progress. Please try again in a moment.',
-              variant: 'destructive',
-            })
-            lastErrorRef.current = null
-          }, 1000)
-        }
-        return
-      }
-      
-      // Show other errors (debounced)
+      // Show other errors (debounced, but only show once)
       errorToastRef.current = setTimeout(() => {
         toast({
           title: 'Timer error',
           description: errorMsg || 'Something went wrong',
           variant: 'destructive',
         })
-        lastErrorRef.current = null
-      }, 500)
+        // Reset after longer delay to prevent spam
+        setTimeout(() => {
+          lastErrorRef.current = null
+        }, 3000)
+      }, 1000)
     }
 
     socket.on('timer:sync', handleSync)
     socket.on('error', handleError)
     
-    // Request sync when socket is connected (will retry after room join)
+    let syncTimeout: ReturnType<typeof setTimeout> | null = null
+    
+    // Request sync only after room is confirmed joined with a small delay
     if (isRoomJoined) {
-      socket.emit('timer:request-sync', { roomId })
+      syncTimeout = setTimeout(() => {
+        if (socket) {
+          socket.emit('timer:request-sync', { roomId })
+        }
+      }, 500)
     }
 
     return () => {
-      socket.off('timer:sync', handleSync)
-      socket.off('error', handleError)
+      if (syncTimeout) {
+        clearTimeout(syncTimeout)
+      }
+      if (socket) {
+        socket.off('timer:sync', handleSync)
+        socket.off('error', handleError)
+      }
       if (errorToastRef.current) {
         clearTimeout(errorToastRef.current)
       }

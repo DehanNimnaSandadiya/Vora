@@ -126,6 +126,11 @@ export const useSocket = () => {
     });
 
     newSocket.on('error', (error) => {
+      // Completely suppress "join the room" errors - they're handled by components
+      if (error.message && (error.message.includes('join the room') || error.message.includes('Not in this room') || error.message.includes('Please join'))) {
+        return // Silently ignore these expected errors
+      }
+      
       // Filter out expected/benign errors that don't need user notification
       if (typeof error === 'object' && error !== null && 'message' in error) {
         const errorMessage = String(error.message);
