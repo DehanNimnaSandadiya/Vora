@@ -74,7 +74,7 @@ export const initializeTimerHandlers = (io) => {
 
   io.on('connection', (socket) => {
     // Timer start
-    socket.on('timer:start', (data) => {
+    socket.on('timer:start', async (data) => {
       try {
         const { roomId, focusMinutes, breakMinutes } = data;
 
@@ -94,8 +94,8 @@ export const initializeTimerHandlers = (io) => {
           if (socket.currentRoomId && String(socket.currentRoomId) === roomIdStr) {
             // Try to join explicitly (in case join wasn't complete)
             socket.join(roomIdStr);
-            // Wait a tiny bit for join to process
-            await new Promise(resolve => setTimeout(resolve, 50));
+            // Wait a bit for join to process (socket.join is async internally)
+            await new Promise(resolve => setTimeout(resolve, 100));
             isInRoom = socket.rooms.has(roomIdStr);
           }
         }
