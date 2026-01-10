@@ -66,7 +66,7 @@ const PORT = process.env.PORT || 5000;
 // Security middleware
 app.use(helmetConfig);
 
-// CORS - strict with CLIENT_URL (normalized, handles trailing slashes)
+// CORS - strict with CLIENT_URL (handles trailing slashes)
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, Postman, etc.)
@@ -78,7 +78,8 @@ app.use(cors({
     
     // Check if normalized origins match
     if (normalizedOrigin === normalizedAllowed) {
-      callback(null, true);
+      // Return the exact origin that was requested (CORS requirement)
+      callback(null, origin);
     } else {
       logger.warn(`CORS blocked: ${origin} (normalized: ${normalizedOrigin}) not matching ${normalizedAllowed}`);
       callback(new Error('Not allowed by CORS'));
