@@ -54,7 +54,7 @@ export const useSocket = () => {
       auth: {
         token,
       },
-      transports: ['polling', 'websocket'], // Try polling first (better for Render)
+      transports: ['websocket', 'polling'], // Prefer websocket, fallback to polling
       reconnection: true,
       reconnectionDelay: 2000, // Wait 2s before first reconnect (give Render time to wake)
       reconnectionDelayMax: 10000, // Max 10s delay between attempts

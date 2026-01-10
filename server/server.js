@@ -47,15 +47,26 @@ const CLIENT_URL = normalizeUrl(process.env.CLIENT_URL);
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: CLIENT_URL,
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(new Error('No origin header'));
+      }
+      const normalizedOrigin = normalizeUrl(origin);
+      if (normalizedOrigin === CLIENT_URL) {
+        callback(null, origin);
+      } else {
+        logger.warn(`Socket.io CORS blocked: ${origin} (normalized: ${normalizedOrigin}) not matching ${CLIENT_URL}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ['GET', 'POST'],
     credentials: true,
     allowedHeaders: ['Authorization', 'Content-Type'],
   },
-  // Improve connection stability
   pingTimeout: 60000,
   pingInterval: 25025,
   transports: ['websocket', 'polling'],
+  allowEIO3: true,
 });
 
 // Socket.io authentication
@@ -155,6 +166,23 @@ app.use('/messages', apiRateLimit, messagesRouter);
 if (process.env.NODE_ENV !== 'production') {
   logger.info('📋 API Routes mounted successfully');
 }
+
+// Socket.io connection logging
+io.on('connection', (socket) => {
+  logger.info(`Socket connected: ${socket.id} from ${socket.handshake.address}`);
+  
+  socket.on('disconnect', (reason) => {
+    logger.info(`Socket disconnected: ${socket.id}, reason: ${reason}`);
+  });
+  
+  socket.on('error', (error) => {
+    logger.error(`Socket error for ${socket.id}:`, error);
+  });
+});
+
+io.engine.on('connection_error', (err) => {
+  logger.error('Socket.io engine connection error:', err);
+});
 
 // Socket.io handlers
 initializeRoomHandlers(io);

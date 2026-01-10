@@ -244,8 +244,20 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
         }
       }, 4000)
 
+      // Optimistic update - show timer starting immediately
+      const now = Date.now()
+      const focusMs = focusMinutes * 60 * 1000
+      const optimisticState: TimerState = {
+        mode: 'focus',
+        endsAt: now + focusMs,
+        isRunning: true,
+        remaining: focusMs,
+        durations: { focusMinutes, breakMinutes },
+      }
+      setTimerState(optimisticState)
+      
       confirmHandlerRef.current = (state: TimerState) => {
-        // Timer started successfully - has endsAt timestamp (not null/undefined)
+        // Timer started successfully - sync with server state
         if (state.endsAt !== null && state.endsAt !== undefined) {
           timerConfirmed = true
           if (startTimeoutRef.current) {

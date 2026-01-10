@@ -32,10 +32,11 @@ export function Login() {
   const [searchParams] = useSearchParams()
 
   useEffect(() => {
-    // Redirect if already logged in
+    // Redirect if already logged in (only after loading completes)
     if (!loading && user) {
       const userRole = user.role || 'user'
       navigate(userRole === 'admin' ? '/admin' : '/dashboard', { replace: true })
+      return
     }
 
     const urlError = searchParams.get('error')
@@ -59,10 +60,14 @@ export function Login() {
 
     try {
       const role = await login(email, password)
-      navigate(role === 'admin' ? '/admin' : '/dashboard')
+      // Only navigate after successful login
+      if (role) {
+        navigate(role === 'admin' ? '/admin' : '/dashboard', { replace: true })
+      }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Wrong email or password.')
-    } finally {
+      // Show error, keep form visible
+      const errorMessage = err.response?.data?.message || err.message || 'Wrong email or password.'
+      setError(errorMessage)
       setIsLoading(false)
     }
   }
@@ -80,10 +85,12 @@ export function Login() {
 
     try {
       await register(name, email, password, university || undefined)
-      navigate('/dashboard')
+      // Only navigate after successful registration
+      navigate('/dashboard', { replace: true })
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Couldn\'t create account. Check your details and try again.')
-    } finally {
+      // Show error, keep form visible
+      const errorMessage = err.response?.data?.message || err.message || 'Couldn\'t create account. Check your details and try again.'
+      setError(errorMessage)
       setIsLoading(false)
     }
   }
@@ -102,8 +109,16 @@ export function Login() {
     )
   }
 
+  // Show login form even if user exists (will redirect via useEffect)
+  // This prevents blank screen during redirect
   if (user) {
-    return null
+    return (
+      <PageContainer className="flex items-center justify-center min-h-screen bg-[#FAFAFA]">
+        <div className="text-center">
+          <div className="animate-pulse text-[#72767D]">Redirecting...</div>
+        </div>
+      </PageContainer>
+    )
   }
 
   return (
