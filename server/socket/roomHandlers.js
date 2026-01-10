@@ -104,9 +104,10 @@ export const initializeRoomHandlers = (io) => {
     // Leave room
     socket.on('room:leave', () => {
       if (socket.currentRoomId) {
-        socket.leave(socket.currentRoomId);
-        removePresence(socket.currentRoomId, socket.userId);
-        emitPresence(io, socket.currentRoomId);
+        const roomIdStr = String(socket.currentRoomId);
+        socket.leave(roomIdStr);
+        removePresence(roomIdStr, socket.userId);
+        emitPresence(io, roomIdStr);
         socket.currentRoomId = null;
       }
     });
