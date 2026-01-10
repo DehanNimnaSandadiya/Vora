@@ -71,12 +71,19 @@ export function VideoCall({ roomId }: VideoCallProps) {
 
       await loadJitsiScript();
 
+      // Ensure container exists before initializing
       if (!jitsiContainerRef.current) {
         throw new Error('Call container not found');
       }
 
       const container = jitsiContainerRef.current;
       container.innerHTML = '';
+      
+      // Show the container
+      setIsInCall(true);
+      
+      // Small delay to ensure DOM is ready
+      await new Promise(resolve => setTimeout(resolve, 50));
 
       const jitsiApi = new window.JitsiMeetExternalAPI(jitsiDomain, {
         roomName,
@@ -133,9 +140,9 @@ export function VideoCall({ roomId }: VideoCallProps) {
       });
 
       jitsiApiRef.current = jitsiApi;
-      setIsInCall(true);
       setIsLoading(false);
     } catch (err: any) {
+      setIsInCall(false);
       setIsLoading(false);
       const errorMessage = err.response?.data?.message || err.message || 'Failed to join call';
       setError(errorMessage);
@@ -219,22 +226,22 @@ export function VideoCall({ roomId }: VideoCallProps) {
           </div>
         </CardContent>
       )}
-      {isInCall && (
-        <CardContent>
-          <div
-            ref={jitsiContainerRef}
-            className="w-full"
-            style={{ height: '600px', minHeight: '600px' }}
-          />
-        </CardContent>
-      )}
-      {!isInCall && !error && (
-        <CardContent>
+      <CardContent>
+        <div
+          ref={jitsiContainerRef}
+          className="w-full"
+          style={{ 
+            height: isInCall ? '600px' : '0px',
+            minHeight: isInCall ? '600px' : '0px',
+            display: isInCall ? 'block' : 'none'
+          }}
+        />
+        {!isInCall && !error && (
           <p className="text-sm text-muted-foreground">
             Click "Join Call" to start a video call with room members.
           </p>
-        </CardContent>
-      )}
+        )}
+      </CardContent>
     </Card>
   );
 }

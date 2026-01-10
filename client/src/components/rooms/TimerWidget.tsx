@@ -108,7 +108,7 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
     return () => clearInterval(interval)
   }, [timerState])
 
-  const handleStart = (focusMinutes: number, breakMinutes: number) => {
+  const handleStart = async (focusMinutes: number, breakMinutes: number) => {
     if (!socket || !isConnected) {
       toast({
         title: 'Not connected',
@@ -119,12 +119,18 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
     }
 
     if (!isRoomJoined) {
-      toast({
-        title: 'Please wait',
-        description: 'Joining room... Please try again in a moment.',
-        variant: 'destructive',
-      })
-      return
+      // Wait a bit for room join to complete, then retry once
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Check again after wait
+      if (!isRoomJoined) {
+        toast({
+          title: 'Please wait',
+          description: 'Joining room... Please try again in a moment.',
+          variant: 'destructive',
+        })
+        return
+      }
     }
 
     // Emit timer start
