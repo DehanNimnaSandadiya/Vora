@@ -20,7 +20,8 @@ export const AdminProtectedRoute = ({ children }: AdminProtectedRouteProps) => {
     return <Navigate to="/login" replace />;
   }
 
-  if (role !== 'admin') {
+  const userRole = role || user.role || 'user';
+  if (userRole !== 'admin') {
     return <Navigate to="/dashboard" replace />;
   }
 

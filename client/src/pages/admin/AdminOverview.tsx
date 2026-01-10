@@ -37,17 +37,46 @@ export function AdminOverview() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [overviewRes, analyticsRes] = await Promise.all([
+      const [overviewRes, analyticsRes] = await Promise.allSettled([
         api.get('/admin/overview'),
         api.get('/admin/analytics'),
       ]);
-      setOverview(overviewRes.data.data);
-      setAnalytics(analyticsRes.data.data);
+      
+      if (overviewRes.status === 'fulfilled' && overviewRes.value?.data?.success && overviewRes.value.data.data) {
+        setOverview(overviewRes.value.data.data);
+      } else {
+        console.error('Failed to fetch overview:', overviewRes.status === 'rejected' ? overviewRes.reason : 'No data');
+      }
+      
+      if (analyticsRes.status === 'fulfilled' && analyticsRes.value?.data?.success) {
+        const analyticsData = analyticsRes.value.data.data || {
+          usersByDay: [],
+          roomsByDay: [],
+          messagesByDay: [],
+          tasksByStatus: [],
+        };
+        setAnalytics(analyticsData);
+      } else {
+        console.error('Failed to fetch analytics:', analyticsRes.status === 'rejected' ? analyticsRes.reason : 'No data');
+        setAnalytics({
+          usersByDay: [],
+          roomsByDay: [],
+          messagesByDay: [],
+          tasksByStatus: [],
+        });
+      }
     } catch (error: any) {
+      console.error('Admin data fetch error:', error);
       toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to load overview data',
+        title: 'Error loading admin data',
+        description: error.response?.data?.message || error.message || 'Failed to load admin overview. Please refresh the page.',
         variant: 'destructive',
+      });
+      setAnalytics({
+        usersByDay: [],
+        roomsByDay: [],
+        messagesByDay: [],
+        tasksByStatus: [],
       });
     } finally {
       setLoading(false);
@@ -62,8 +91,19 @@ export function AdminOverview() {
     );
   }
 
-  if (!overview || !analytics) {
-    return null;
+  const analyticsData = analytics || {
+    usersByDay: [],
+    roomsByDay: [],
+    messagesByDay: [],
+    tasksByStatus: [],
+  };
+
+  if (!overview) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-slate-400">Failed to load overview data. Please refresh the page.</div>
+      </div>
+    );
   }
 
   const stats = [
@@ -142,7 +182,7 @@ export function AdminOverview() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={analytics.usersByDay}>
+              <LineChart data={analyticsData.usersByDay}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="date" stroke="#64748b" />
                 <YAxis stroke="#64748b" />
@@ -164,7 +204,7 @@ export function AdminOverview() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={analytics.roomsByDay}>
+              <LineChart data={analyticsData.roomsByDay}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="date" stroke="#64748b" />
                 <YAxis stroke="#64748b" />
@@ -186,7 +226,7 @@ export function AdminOverview() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={analytics.messagesByDay}>
+              <BarChart data={analyticsData.messagesByDay}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="date" stroke="#64748b" />
                 <YAxis stroke="#64748b" />
@@ -210,7 +250,7 @@ export function AdminOverview() {
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={analytics.tasksByStatus}
+                  data={analyticsData.tasksByStatus}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
@@ -222,7 +262,7 @@ export function AdminOverview() {
                   fill="#8884d8"
                   dataKey="count"
                 >
-                  {analytics.tasksByStatus.map((_, index) => (
+                  {analyticsData.tasksByStatus.map((_, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>

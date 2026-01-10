@@ -84,14 +84,28 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const fetchUser = async () => {
     try {
       const response = await api.get('/auth/me');
-      const userData = response.data.user;
-      const userWithRole = { ...userData, role: userData.role || 'user' };
-      setUser(userWithRole);
-      localStorage.setItem('user', JSON.stringify(userWithRole));
-    } catch (error) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      setUser(null);
+      if (response.data.success && response.data.user) {
+        const userData = response.data.user;
+        const userWithRole = {
+          ...userData,
+          role: userData.role || 'user',
+          badges: userData.badges || [],
+          stats: userData.stats || {
+            streakCount: 0,
+            totalFocusMinutes: 0,
+            tasksCompleted: 0,
+          },
+        };
+        setUser(userWithRole);
+        localStorage.setItem('user', JSON.stringify(userWithRole));
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch user:', error);
+      if (error.response?.status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setUser(null);
+      }
     }
   };
 

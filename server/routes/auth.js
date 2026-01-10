@@ -109,6 +109,12 @@ router.post('/login', loginValidation, async (req, res) => {
           university: null,
           provider: 'local',
           role: 'admin',
+          badges: [],
+          stats: {
+            streakCount: 0,
+            totalFocusMinutes: 0,
+            tasksCompleted: 0,
+          },
         },
       });
     }
@@ -182,6 +188,12 @@ router.get('/me', protect, async (req, res) => {
           university: null,
           provider: 'local',
           role: 'admin',
+          badges: [],
+          stats: {
+            streakCount: 0,
+            totalFocusMinutes: 0,
+            tasksCompleted: 0,
+          },
         },
       });
     }
@@ -205,10 +217,17 @@ router.get('/me', protect, async (req, res) => {
         name: user.name,
         email: user.email,
         avatar: user.avatar,
+        avatarUrl: user.avatarUrl,
         university: user.university,
         provider: user.provider,
         createdAt: user.createdAt,
         role,
+        badges: user.badges || [],
+        stats: user.stats || {
+          streakCount: 0,
+          totalFocusMinutes: 0,
+          tasksCompleted: 0,
+        },
       },
     });
   } catch (error) {

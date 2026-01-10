@@ -55,6 +55,159 @@ router.get('/overview', async (req, res) => {
   }
 });
 
+// GET /api/admin/analytics
+router.get('/analytics', async (req, res) => {
+  try {
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    fourteenDaysAgo.setHours(0, 0, 0, 0);
+
+    // Users by day (last 14 days)
+    const usersByDay = await User.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: fourteenDaysAgo },
+        },
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { _id: 1 },
+      },
+      {
+        $project: {
+          date: '$_id',
+          count: 1,
+          _id: 0,
+        },
+      },
+    ]);
+
+    // Rooms by day (last 14 days)
+    const roomsByDay = await Room.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: fourteenDaysAgo },
+        },
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { _id: 1 },
+      },
+      {
+        $project: {
+          date: '$_id',
+          count: 1,
+          _id: 0,
+        },
+      },
+    ]);
+
+    // Messages by day (last 14 days)
+    const messagesByDay = await Message.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: fourteenDaysAgo },
+        },
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { _id: 1 },
+      },
+      {
+        $project: {
+          date: '$_id',
+          count: 1,
+          _id: 0,
+        },
+      },
+    ]);
+
+    // Tasks by status
+    const tasksByStatus = await Task.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          status: '$_id',
+          count: 1,
+          _id: 0,
+        },
+      },
+    ]);
+
+    // Fill in missing dates with 0 counts
+    const dateMap = new Map();
+    for (let i = 0; i < 14; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() - (13 - i));
+      date.setHours(0, 0, 0, 0);
+      const dateStr = date.toISOString().split('T')[0];
+      dateMap.set(dateStr, { date: dateStr, count: 0 });
+    }
+
+    usersByDay.forEach(item => {
+      if (dateMap.has(item.date)) {
+        dateMap.set(item.date, { ...dateMap.get(item.date), count: item.count });
+      }
+    });
+    const filledUsersByDay = Array.from(dateMap.values());
+
+    dateMap.forEach((value, key) => {
+      dateMap.set(key, { date: key, count: 0 });
+    });
+    roomsByDay.forEach(item => {
+      if (dateMap.has(item.date)) {
+        dateMap.set(item.date, { ...dateMap.get(item.date), count: item.count });
+      }
+    });
+    const filledRoomsByDay = Array.from(dateMap.values());
+
+    dateMap.forEach((value, key) => {
+      dateMap.set(key, { date: key, count: 0 });
+    });
+    messagesByDay.forEach(item => {
+      if (dateMap.has(item.date)) {
+        dateMap.set(item.date, { ...dateMap.get(item.date), count: item.count });
+      }
+    });
+    const filledMessagesByDay = Array.from(dateMap.values());
+
+    res.json({
+      success: true,
+      data: {
+        usersByDay: filledUsersByDay,
+        roomsByDay: filledRoomsByDay,
+        messagesByDay: filledMessagesByDay,
+        tasksByStatus: tasksByStatus || [],
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error',
+    });
+  }
+});
+
 // POST /api/admin/seed-users - Create sample users for demo
 router.post('/seed-users', async (req, res) => {
   try {

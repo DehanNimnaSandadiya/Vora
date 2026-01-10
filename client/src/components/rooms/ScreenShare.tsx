@@ -40,8 +40,11 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
       };
 
       pc.ontrack = (event) => {
-        if (remoteVideoRef.current) {
+        if (event.streams && event.streams[0] && remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = event.streams[0];
+        } else if (event.track && remoteVideoRef.current) {
+          const stream = new MediaStream([event.track]);
+          remoteVideoRef.current.srcObject = stream;
         }
       };
 
@@ -139,7 +142,7 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
       socket.off('screenshare:ice-candidate', handleIceCandidate);
       socket.off('screenshare:answer', handleAnswer);
     };
-  }, [socket, isConnected, isRoomJoined, isSharing, sharerId]);
+  }, [socket, isConnected, isRoomJoined, isSharing, sharerId, handleReceiveOffer]);
 
   const handleStartShare = async () => {
     if (!socket || !socket.connected || !isConnected || !isRoomJoined) {
@@ -158,10 +161,14 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
       });
 
       localStreamRef.current = stream;
-
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-      }
+      setIsSharing(true);
+      
+      // Wait for React to render video element, then set stream
+      requestAnimationFrame(() => {
+        if (localVideoRef.current && stream) {
+          localVideoRef.current.srcObject = stream;
+        }
+      });
 
       const pc = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
@@ -193,7 +200,6 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
       });
 
       sharerPcRef.current = pc;
-      setIsSharing(true);
     } catch (error: any) {
       if (error.name === 'NotAllowedError') {
         toast({
@@ -234,11 +240,30 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
   };
 
   useEffect(() => {
+    if (isSharing && localStreamRef.current && localVideoRef.current) {
+      localVideoRef.current.srcObject = localStreamRef.current;
+    }
+  }, [isSharing]);
+
+  useEffect(() => {
     return () => {
-      handleStopShare();
-      handleStopViewing();
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => track.stop());
+        localStreamRef.current = null;
+      }
+      if (sharerPcRef.current) {
+        sharerPcRef.current.close();
+        sharerPcRef.current = null;
+      }
+      if (pcRef.current) {
+        pcRef.current.close();
+        pcRef.current = null;
+      }
+      if (socket && socket.connected && isSharing) {
+        socket.emit('screenshare:stop', { roomId });
+      }
     };
-  }, [roomId]);
+  }, [roomId, socket, isSharing]);
 
   return (
     <Card className="rounded-2xl">
@@ -273,36 +298,38 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
         </div>
       </CardHeader>
       <CardContent>
-        {isSharing && localVideoRef.current && (
-          <div className="space-y-2">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-full rounded-lg border"
-              style={{ maxHeight: '400px' }}
-            />
-            <p className="text-sm text-muted-foreground">Sharing your screen</p>
-          </div>
-        )}
-        {isViewing && remoteVideoRef.current && (
-          <div className="space-y-2">
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="w-full rounded-lg border"
-              style={{ maxHeight: '400px' }}
-            />
-            <p className="text-sm text-muted-foreground">Viewing shared screen</p>
-          </div>
-        )}
-        {!isSharing && !isViewing && (
-          <p className="text-sm text-muted-foreground">
-            Share your screen with room members. Only one person can share at a time.
-          </p>
-        )}
+        <div className="space-y-2">
+          {isSharing && (
+            <>
+              <video
+                ref={localVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className="w-full rounded-lg border bg-black"
+                style={{ maxHeight: '400px', minHeight: '300px', objectFit: 'contain' }}
+              />
+              <p className="text-sm text-muted-foreground">Sharing your screen - visible to all room members</p>
+            </>
+          )}
+          {isViewing && !isSharing && (
+            <>
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className="w-full rounded-lg border bg-black"
+                style={{ maxHeight: '400px', minHeight: '300px', objectFit: 'contain' }}
+              />
+              <p className="text-sm text-muted-foreground">Viewing shared screen</p>
+            </>
+          )}
+          {!isSharing && !isViewing && (
+            <p className="text-sm text-muted-foreground">
+              Share your screen with room members. Only one person can share at a time.
+            </p>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

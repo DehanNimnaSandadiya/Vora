@@ -4,10 +4,10 @@ import helmet from 'helmet';
 // Rate limiting for auth routes
 export const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 5 : 1000, // Relaxed in dev: 1000 requests per window
+  max: process.env.NODE_ENV === 'production' ? 30 : 1000, // Increased from 5 to 30 for production
   message: {
     success: false,
-    message: 'Too many login attempts. Try again in a minute',
+    message: 'Too many login attempts. Please try again in a few minutes',
   },
   standardHeaders: true,
   legacyHeaders: false,
