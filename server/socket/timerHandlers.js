@@ -150,7 +150,7 @@ export const initializeTimerHandlers = (io) => {
     });
 
     // Timer pause
-    socket.on('timer:pause', (data) => {
+    socket.on('timer:pause', async (data) => {
       try {
         const { roomId } = data;
 
@@ -163,16 +163,17 @@ export const initializeTimerHandlers = (io) => {
         const roomIdStr = String(roomId);
         
         // Check if socket is in the room - allow if currentRoomId matches
-        const isInRoom = socket.rooms.has(roomIdStr) || (socket.currentRoomId && String(socket.currentRoomId) === roomIdStr);
+        let isInRoom = socket.rooms.has(roomIdStr);
+        if (!isInRoom && socket.currentRoomId && String(socket.currentRoomId) === roomIdStr) {
+          socket.join(roomIdStr);
+          await new Promise(resolve => setTimeout(resolve, 50));
+          isInRoom = socket.rooms.has(roomIdStr);
+        }
+        
         if (!isInRoom) {
           logger.warn(`Timer pause: Socket ${socket.id} not in room ${roomIdStr}`);
           socket.emit('error', { message: 'Please join the room first' });
           return;
-        }
-        
-        // Ensure socket is in the room
-        if (!socket.rooms.has(roomIdStr)) {
-          socket.join(roomIdStr);
         }
 
         const state = roomStates.get(roomIdStr);
@@ -181,7 +182,7 @@ export const initializeTimerHandlers = (io) => {
           return;
         }
 
-        if (state.isRunning) {
+        if (state.isRunning && state.endsAt) {
           // Calculate remaining time
           const now = Date.now();
           const remaining = Math.max(0, state.endsAt - now);
@@ -198,6 +199,7 @@ export const initializeTimerHandlers = (io) => {
             remaining: remaining,
             durations: state.durations,
           });
+          logger.info(`Timer paused in room ${roomIdStr}: ${Math.floor(remaining / 60000)}min remaining`);
         }
       } catch (error) {
         logger.error('Error pausing timer:', error);
@@ -206,7 +208,7 @@ export const initializeTimerHandlers = (io) => {
     });
 
     // Timer resume
-    socket.on('timer:resume', (data) => {
+    socket.on('timer:resume', async (data) => {
       try {
         const { roomId } = data;
 
@@ -219,16 +221,17 @@ export const initializeTimerHandlers = (io) => {
         const roomIdStr = String(roomId);
         
         // Check if socket is in the room - allow if currentRoomId matches
-        const isInRoom = socket.rooms.has(roomIdStr) || (socket.currentRoomId && String(socket.currentRoomId) === roomIdStr);
+        let isInRoom = socket.rooms.has(roomIdStr);
+        if (!isInRoom && socket.currentRoomId && String(socket.currentRoomId) === roomIdStr) {
+          socket.join(roomIdStr);
+          await new Promise(resolve => setTimeout(resolve, 50));
+          isInRoom = socket.rooms.has(roomIdStr);
+        }
+        
         if (!isInRoom) {
           logger.warn(`Timer resume: Socket ${socket.id} not in room ${roomIdStr}`);
           socket.emit('error', { message: 'Please join the room first' });
           return;
-        }
-        
-        // Ensure socket is in the room
-        if (!socket.rooms.has(roomIdStr)) {
-          socket.join(roomIdStr);
         }
 
         const state = roomStates.get(roomIdStr);
@@ -241,17 +244,31 @@ export const initializeTimerHandlers = (io) => {
           const now = Date.now();
           const remaining = Math.max(0, state.endsAt - now);
           
-          // Resume with remaining time
-          state.isRunning = true;
-          state.endsAt = now + remaining;
+          if (remaining > 0) {
+            // Resume with remaining time
+            state.isRunning = true;
+            state.endsAt = now + remaining;
 
-          io.to(roomIdStr).emit('timer:sync', {
-            mode: state.mode,
-            endsAt: state.endsAt,
-            isRunning: true,
-            remaining: remaining,
-            durations: state.durations,
-          });
+            io.to(roomIdStr).emit('timer:sync', {
+              mode: state.mode,
+              endsAt: state.endsAt,
+              isRunning: true,
+              remaining: remaining,
+              durations: state.durations,
+            });
+            logger.info(`Timer resumed in room ${roomIdStr}: ${Math.floor(remaining / 60000)}min remaining`);
+          } else {
+            // Timer expired while paused, reset it
+            state.endsAt = null;
+            state.isRunning = false;
+            io.to(roomIdStr).emit('timer:sync', {
+              mode: state.mode,
+              endsAt: null,
+              isRunning: false,
+              remaining: 0,
+              durations: state.durations,
+            });
+          }
         }
       } catch (error) {
         logger.error('Error resuming timer:', error);
@@ -260,7 +277,7 @@ export const initializeTimerHandlers = (io) => {
     });
 
     // Timer reset
-    socket.on('timer:reset', (data) => {
+    socket.on('timer:reset', async (data) => {
       try {
         const { roomId } = data;
 
@@ -273,16 +290,17 @@ export const initializeTimerHandlers = (io) => {
         const roomIdStr = String(roomId);
         
         // Check if socket is in the room - allow if currentRoomId matches
-        const isInRoom = socket.rooms.has(roomIdStr) || (socket.currentRoomId && String(socket.currentRoomId) === roomIdStr);
+        let isInRoom = socket.rooms.has(roomIdStr);
+        if (!isInRoom && socket.currentRoomId && String(socket.currentRoomId) === roomIdStr) {
+          socket.join(roomIdStr);
+          await new Promise(resolve => setTimeout(resolve, 50));
+          isInRoom = socket.rooms.has(roomIdStr);
+        }
+        
         if (!isInRoom) {
           logger.warn(`Timer reset: Socket ${socket.id} not in room ${roomIdStr}`);
           socket.emit('error', { message: 'Please join the room first' });
           return;
-        }
-        
-        // Ensure socket is in the room
-        if (!socket.rooms.has(roomIdStr)) {
-          socket.join(roomIdStr);
         }
 
         const state = roomStates.get(roomIdStr);

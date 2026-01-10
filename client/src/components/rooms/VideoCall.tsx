@@ -131,13 +131,18 @@ export function VideoCall({ roomId }: VideoCallProps) {
         },
       });
 
-      jitsiApi.addEventListener('readyToClose', () => {
-        handleLeaveCall();
-      });
+      // Store reference to current API instance for event handlers
+      const currentApi = jitsiApi;
+      
+      const leaveHandler = () => {
+        // Only handle if this is still the active API instance
+        if (jitsiApiRef.current === currentApi) {
+          handleLeaveCall();
+        }
+      };
 
-      jitsiApi.addEventListener('videoConferenceLeft', () => {
-        handleLeaveCall();
-      });
+      jitsiApi.addEventListener('readyToClose', leaveHandler);
+      jitsiApi.addEventListener('videoConferenceLeft', leaveHandler);
 
       jitsiApiRef.current = jitsiApi;
       setIsLoading(false);
@@ -172,11 +177,24 @@ export function VideoCall({ roomId }: VideoCallProps) {
     setError(null);
   };
 
+  // Track roomId changes to cleanup only when navigating to different room
+  const prevRoomIdRef = useRef<string | undefined>(undefined);
+
   useEffect(() => {
-    return () => {
+    // Cleanup call only when roomId actually changes (user navigated to different room)
+    if (prevRoomIdRef.current !== undefined && prevRoomIdRef.current !== roomId && jitsiApiRef.current) {
       handleLeaveCall();
+    }
+    prevRoomIdRef.current = roomId;
+    
+    // Cleanup on component unmount (when navigating away from room page entirely)
+    return () => {
+      // Only cleanup if we're still on the same room (actual unmount, not room change)
+      if (prevRoomIdRef.current === roomId && jitsiApiRef.current) {
+        handleLeaveCall();
+      }
     };
-  }, []);
+  }, [roomId]);
 
   return (
     <Card className="rounded-2xl">

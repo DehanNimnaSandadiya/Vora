@@ -127,17 +127,30 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
   useEffect(() => {
     const updateTime = () => {
       if (timerState.isRunning && timerState.endsAt) {
+        // Timer is running - calculate from endsAt
         const now = Date.now()
         const remaining = Math.max(0, timerState.endsAt - now)
         
-        const minutes = Math.floor(remaining / 60000)
-        const seconds = Math.floor((remaining % 60000) / 1000)
-        setDisplayTime(`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`)
-
-        if (remaining === 0) {
+        if (remaining > 0) {
+          const minutes = Math.floor(remaining / 60000)
+          const seconds = Math.floor((remaining % 60000) / 1000)
+          setDisplayTime(`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`)
+        } else {
+          setDisplayTime('00:00')
+        }
+      } else if (timerState.endsAt && !timerState.isRunning) {
+        // Timer is paused - use remaining time from state
+        const now = Date.now()
+        const remaining = Math.max(0, timerState.endsAt - now)
+        if (remaining > 0) {
+          const minutes = Math.floor(remaining / 60000)
+          const seconds = Math.floor((remaining % 60000) / 1000)
+          setDisplayTime(`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`)
+        } else {
           setDisplayTime('00:00')
         }
       } else if (timerState.remaining > 0) {
+        // Fallback to remaining from server sync
         const minutes = Math.floor(timerState.remaining / 60000)
         const seconds = Math.floor((timerState.remaining % 60000) / 1000)
         setDisplayTime(`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`)
@@ -147,7 +160,8 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
     }
 
     updateTime()
-    const interval = setInterval(updateTime, 100)
+    // Update display every 100ms if timer is running, otherwise every 1s
+    const interval = setInterval(updateTime, timerState.isRunning ? 100 : 1000)
 
     return () => clearInterval(interval)
   }, [timerState])
@@ -290,6 +304,19 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
       })
       return
     }
+
+    // Optimistic update - pause immediately
+    if (timerState.endsAt && timerState.isRunning) {
+      const now = Date.now()
+      const remaining = Math.max(0, timerState.endsAt - now)
+      setTimerState(prev => ({
+        ...prev,
+        isRunning: false,
+        endsAt: now + remaining,
+        remaining,
+      }))
+    }
+
     socket.emit('timer:pause', { roomId })
   }
 
@@ -302,7 +329,21 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
       })
       return
     }
-    socket.emit('timer:resume', { roomId })
+
+    // Optimistic update - resume immediately
+    if (timerState.endsAt && !timerState.isRunning) {
+      const now = Date.now()
+      const remaining = Math.max(0, timerState.endsAt - now)
+      if (remaining > 0) {
+        setTimerState(prev => ({
+          ...prev,
+          isRunning: true,
+          endsAt: now + remaining,
+          remaining,
+        }))
+        socket.emit('timer:resume', { roomId })
+      }
+    }
   }
 
   const handleReset = () => {
