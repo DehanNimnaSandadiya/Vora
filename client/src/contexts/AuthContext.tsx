@@ -28,7 +28,10 @@ interface User {
   stats?: {
     streakCount?: number;
     lastGoalMetDate?: string | null;
+    totalFocusMinutes?: number;
+    tasksCompleted?: number;
   };
+  badges?: string[];
   provider: 'local' | 'google';
   role?: 'user' | 'admin';
   createdAt?: string;

@@ -46,6 +46,7 @@ router.get('/me', async (req, res) => {
         language: user.language,
         preferences: user.preferences,
         stats: user.stats,
+        badges: user.badges || [],
         provider: user.provider,
         role: user.role,
         createdAt: user.createdAt,

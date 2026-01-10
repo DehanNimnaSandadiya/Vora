@@ -54,7 +54,7 @@ router.post('/', createRoomValidation, async (req, res) => {
       codeExpiresAt: codeExpiresAt ? new Date(codeExpiresAt) : null,
     });
 
-    await room.populate('owner', 'name email avatar');
+    await room.populate('owner', 'name email avatar badges');
 
     res.status(201).json({
       success: true,
@@ -78,8 +78,8 @@ router.get('/', async (req, res) => {
         { members: req.user._id }, // Private rooms user is a member of
       ],
     })
-      .populate('owner', 'name email avatar')
-      .populate('members', 'name email avatar')
+      .populate('owner', 'name email avatar badges')
+      .populate('members', 'name email avatar badges')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -99,8 +99,8 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const room = await Room.findById(req.params.id)
-      .populate('owner', 'name email avatar')
-      .populate('members', 'name email avatar');
+      .populate('owner', 'name email avatar badges')
+      .populate('members', 'name email avatar badges');
 
     if (!room) {
       return res.status(404).json({
@@ -183,8 +183,8 @@ router.post('/:id/join', joinRoomValidation, async (req, res) => {
     room.members.push(req.user._id);
     await room.save();
 
-    await room.populate('owner', 'name email avatar');
-    await room.populate('members', 'name email avatar');
+    await room.populate('owner', 'name email avatar badges');
+    await room.populate('members', 'name email avatar badges');
 
     res.json({
       success: true,
@@ -674,8 +674,8 @@ router.patch('/:id', [
 
     await room.save();
 
-    await room.populate('owner', 'name email avatar');
-    await room.populate('members', 'name email avatar');
+    await room.populate('owner', 'name email avatar badges');
+    await room.populate('members', 'name email avatar badges');
 
     // Emit update via socket
     req.app.get('io').to(req.params.id).emit('room:updated', { room });

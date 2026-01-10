@@ -330,6 +330,7 @@ function emitPresence(io, roomId) {
       name: data.user.name,
       email: data.user.email,
       avatar: data.user.avatar,
+      badges: data.user.badges || [],
     },
   }));
 

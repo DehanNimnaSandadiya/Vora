@@ -25,10 +25,38 @@ async function endSession(userId, roomId, sessionData) {
     // Update user stats and check badges for focus sessions
     if (sessionData.mode === 'focus' && durationSeconds > 0) {
       const durationMinutes = Math.floor(durationSeconds / 60);
-      await User.findByIdAndUpdate(userId, {
-        $inc: { 'stats.totalFocusMinutes': durationMinutes },
-      });
-      await checkAndAwardBadges(userId);
+      const user = await User.findById(userId);
+      if (user) {
+        // Update focus minutes
+        user.stats.totalFocusMinutes = (user.stats.totalFocusMinutes || 0) + durationMinutes;
+        
+        // Update streak - check if this is a new day
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const lastActivity = user.stats.lastActivityDate ? new Date(user.stats.lastActivityDate) : null;
+        const lastActivityDate = lastActivity ? new Date(lastActivity.setHours(0, 0, 0, 0)) : null;
+        
+        if (!lastActivityDate || lastActivityDate.getTime() !== today.getTime()) {
+          // New day activity
+          if (!lastActivityDate) {
+            // First activity ever
+            user.stats.streakCount = 1;
+          } else {
+            const daysDiff = Math.floor((today.getTime() - lastActivityDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysDiff === 1) {
+              // Consecutive day
+              user.stats.streakCount = (user.stats.streakCount || 0) + 1;
+            } else {
+              // Streak broken
+              user.stats.streakCount = 1;
+            }
+          }
+          user.stats.lastActivityDate = today;
+        }
+        
+        await user.save();
+        await checkAndAwardBadges(userId);
+      }
     }
   } catch (error) {
     logger.error('Error ending study session:', error);

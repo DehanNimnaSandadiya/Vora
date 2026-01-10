@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { PageContainer } from "@/lib/design-system"
 import { Users, Clock, Lock, Send, Activity, ChevronLeft, ChevronRight } from "lucide-react"
+import { BadgeList } from "@/components/ui/badge-icon"
 import { useRoom } from "@/hooks/useRoom"
 import api from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
@@ -14,6 +15,7 @@ import { TimerWidget } from "@/components/rooms/TimerWidget"
 import { TasksPanel } from "@/components/rooms/TasksPanel"
 import { InviteDialog } from "@/components/rooms/InviteDialog"
 import { VideoCall } from "@/components/rooms/VideoCall"
+import { ScreenShare } from "@/components/rooms/ScreenShare"
 
 interface Room {
   _id: string
@@ -203,10 +205,15 @@ export function RoomDetail() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {p.user.name}
-                            {p.userId === user?.id && ' (You)'}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium truncate">
+                              {p.user.name}
+                              {p.userId === user?.id && ' (You)'}
+                            </p>
+                            {p.user.badges && p.user.badges.length > 0 && (
+                              <BadgeList badges={p.user.badges} size="sm" maxVisible={2} />
+                            )}
+                          </div>
                           <Badge
                             variant="outline"
                             className={`text-xs rounded-2xl mt-1 ${statusColors[p.status]}`}
@@ -282,6 +289,7 @@ export function RoomDetail() {
           <div className={`${sidePanelOpen ? 'lg:col-span-5' : 'lg:col-span-9'} space-y-6 transition-all duration-300`}>
             <TimerWidget roomId={roomId || ''} isRoomJoined={isRoomJoined} />
             <VideoCall roomId={roomId || ''} />
+            <ScreenShare roomId={roomId || ''} isRoomJoined={isRoomJoined} />
             <TasksPanel roomId={roomId || ''} />
           </div>
 

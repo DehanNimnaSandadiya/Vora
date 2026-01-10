@@ -11,6 +11,7 @@ interface PresenceUser {
     name: string;
     email: string;
     avatar: string | null;
+    badges?: string[];
   };
 }
 

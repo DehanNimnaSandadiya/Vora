@@ -7,11 +7,12 @@ import { Select } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PageContainer } from "@/lib/design-system"
-import { Save, Loader2, User, Settings, Target } from "lucide-react"
+import { Save, Loader2, User, Settings, Target, Award } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { usersApi, presetsApi, analyticsApi } from "@/lib/api-extended"
 import { useToast } from "@/hooks/useToast"
 import { i18n } from "@/lib/i18n"
+import { BadgeIcon } from "@/components/ui/badge-icon"
 
 export function Profile() {
   const { user, setUser } = useAuth()
@@ -81,6 +82,19 @@ export function Profile() {
 
         if (userData.stats) {
           setStats(userData.stats)
+        }
+
+        if (userData.badges || userData.stats) {
+          if (user) {
+            const userWithBadges = {
+              ...user,
+              id: user.id,
+              badges: userData.badges || user.badges || [],
+              stats: userData.stats || user.stats,
+            }
+            setUser(userWithBadges)
+            localStorage.setItem('user', JSON.stringify(userWithBadges))
+          }
         }
 
         // Set i18n language
@@ -565,34 +579,72 @@ export function Profile() {
           </TabsContent>
 
           <TabsContent value="stats">
-            <Card className="rounded-2xl">
-              <CardHeader>
-                <CardTitle>Account Statistics</CardTitle>
-                <CardDescription>
-                  Your activity overview
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div>
-                    <p className="text-2xl font-bold">{stats?.streakCount || 0}</p>
-                    <p className="text-sm text-muted-foreground">Current Streak</p>
+            <div className="space-y-6">
+              <Card className="rounded-2xl">
+                <CardHeader>
+                  <CardTitle>Account Statistics</CardTitle>
+                  <CardDescription>
+                    Your activity overview
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <p className="text-2xl font-bold">{stats?.streakCount || user?.stats?.streakCount || 0}</p>
+                      <p className="text-sm text-muted-foreground">Current Streak</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold">
+                        {stats?.tasksCompletedCount || user?.stats?.tasksCompleted || 0}
+                      </p>
+                      <p className="text-sm text-muted-foreground">Tasks Completed</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold">
+                        {Math.floor((user?.stats?.totalFocusMinutes || 0) / 60)}h {((user?.stats?.totalFocusMinutes || 0) % 60)}m
+                      </p>
+                      <p className="text-sm text-muted-foreground">Total Focus Time</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-2xl font-bold">
-                      {stats?.tasksCompletedCount || 0}
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-2xl">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Award className="h-5 w-5" />
+                    Earned Badges
+                  </CardTitle>
+                  <CardDescription>
+                    Your achievements and milestones
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {user?.badges && user.badges.length > 0 ? (
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                      {user.badges.map((badge: string) => (
+                        <div
+                          key={badge}
+                          className="flex flex-col items-center justify-center p-4 rounded-2xl border bg-muted/50"
+                        >
+                          <BadgeIcon badge={badge as any} size="lg" />
+                          <p className="mt-2 text-sm font-medium text-center">
+                            {badge === 'first_session' && 'First Session'}
+                            {badge === 'streak_3' && '3-Day Streak'}
+                            {badge === 'task_finisher' && 'Task Finisher'}
+                            {badge === 'focused_5h' && '5h Focused'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      No badges yet. Complete focus sessions and tasks to earn badges!
                     </p>
-                    <p className="text-sm text-muted-foreground">Tasks Completed (30d)</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">
-                      {stats?.goalProgress?.actualMinutes || 0} / {stats?.goalProgress?.dailyGoalMinutes || 120}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Today's Goal Progress</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>

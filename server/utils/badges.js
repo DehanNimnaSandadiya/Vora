@@ -37,11 +37,7 @@ export async function checkAndAwardBadges(userId) {
 
     // Check Task Finisher (10 completed tasks)
     if (!earnedBadges.has(BADGES.TASK_FINISHER)) {
-      const completedTasks = await Task.countDocuments({
-        userId,
-        status: 'completed',
-      });
-      if (completedTasks >= 10) {
+      if ((user.stats.tasksCompleted || 0) >= 10) {
         earnedBadges.add(BADGES.TASK_FINISHER);
         newBadges.push(BADGES.TASK_FINISHER);
       }

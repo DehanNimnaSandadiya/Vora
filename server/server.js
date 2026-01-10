@@ -33,6 +33,7 @@ import messagesRouter from './routes/messages.js';
 import { socketAuth } from './middleware/socketAuth.js';
 import { initializeRoomHandlers } from './socket/roomHandlers.js';
 import { initializeTimerHandlers } from './socket/timerHandlers.js';
+import { initializeScreenShareHandlers } from './socket/screenShareHandlers.js';
 
 const app = express();
 
@@ -192,6 +193,7 @@ io.engine.on('connection_error', (err) => {
 // Socket.io handlers
 initializeRoomHandlers(io);
 initializeTimerHandlers(io);
+initializeScreenShareHandlers(io);
 
 // Initialize email
 initializeEmail();
