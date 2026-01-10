@@ -86,12 +86,17 @@ export const initializeTimerHandlers = (io) => {
         // Normalize roomId to string for comparison
         const roomIdStr = String(roomId);
         
-        // Check if socket is in the room (more lenient check)
-        const isInRoom = socket.rooms.has(roomIdStr);
+        // Check if socket is in the room - allow if currentRoomId matches even if rooms check fails (timing issue)
+        const isInRoom = socket.rooms.has(roomIdStr) || (socket.currentRoomId && String(socket.currentRoomId) === roomIdStr);
         if (!isInRoom) {
-          logger.warn(`Timer start: Socket ${socket.id} not in room ${roomIdStr}. Current rooms: ${Array.from(socket.rooms).join(', ')}`);
+          logger.warn(`Timer start: Socket ${socket.id} not in room ${roomIdStr}. Current rooms: ${Array.from(socket.rooms).join(', ')}, currentRoomId: ${socket.currentRoomId}`);
           socket.emit('error', { message: 'Please join the room first' });
           return;
+        }
+        
+        // Ensure socket is actually in the room (join if not already)
+        if (!socket.rooms.has(roomIdStr)) {
+          socket.join(roomIdStr);
         }
 
         const now = Date.now();
@@ -139,12 +144,17 @@ export const initializeTimerHandlers = (io) => {
         // Normalize roomId to string
         const roomIdStr = String(roomId);
         
-        // Check if socket is in the room
-        const isInRoom = socket.rooms.has(roomIdStr);
+        // Check if socket is in the room - allow if currentRoomId matches
+        const isInRoom = socket.rooms.has(roomIdStr) || (socket.currentRoomId && String(socket.currentRoomId) === roomIdStr);
         if (!isInRoom) {
           logger.warn(`Timer pause: Socket ${socket.id} not in room ${roomIdStr}`);
           socket.emit('error', { message: 'Please join the room first' });
           return;
+        }
+        
+        // Ensure socket is in the room
+        if (!socket.rooms.has(roomIdStr)) {
+          socket.join(roomIdStr);
         }
 
         const state = roomStates.get(roomIdStr);
@@ -190,12 +200,17 @@ export const initializeTimerHandlers = (io) => {
         // Normalize roomId to string
         const roomIdStr = String(roomId);
         
-        // Check if socket is in the room
-        const isInRoom = socket.rooms.has(roomIdStr);
+        // Check if socket is in the room - allow if currentRoomId matches
+        const isInRoom = socket.rooms.has(roomIdStr) || (socket.currentRoomId && String(socket.currentRoomId) === roomIdStr);
         if (!isInRoom) {
           logger.warn(`Timer resume: Socket ${socket.id} not in room ${roomIdStr}`);
           socket.emit('error', { message: 'Please join the room first' });
           return;
+        }
+        
+        // Ensure socket is in the room
+        if (!socket.rooms.has(roomIdStr)) {
+          socket.join(roomIdStr);
         }
 
         const state = roomStates.get(roomIdStr);
@@ -239,12 +254,17 @@ export const initializeTimerHandlers = (io) => {
         // Normalize roomId to string
         const roomIdStr = String(roomId);
         
-        // Check if socket is in the room
-        const isInRoom = socket.rooms.has(roomIdStr);
+        // Check if socket is in the room - allow if currentRoomId matches
+        const isInRoom = socket.rooms.has(roomIdStr) || (socket.currentRoomId && String(socket.currentRoomId) === roomIdStr);
         if (!isInRoom) {
           logger.warn(`Timer reset: Socket ${socket.id} not in room ${roomIdStr}`);
           socket.emit('error', { message: 'Please join the room first' });
           return;
+        }
+        
+        // Ensure socket is in the room
+        if (!socket.rooms.has(roomIdStr)) {
+          socket.join(roomIdStr);
         }
 
         const state = roomStates.get(roomIdStr);
@@ -290,15 +310,22 @@ export const initializeTimerHandlers = (io) => {
         // Normalize roomId to string
         const roomIdStr = String(roomId);
         
-        // Check if user is in the room (but allow if join is in progress)
-        const isInRoom = socket.currentRoomId === roomIdStr && socket.rooms.has(roomIdStr);
+        // Check if socket is in the room (more lenient - allow if in room regardless of currentRoomId)
+        const isInRoom = socket.rooms.has(roomIdStr);
         
-        if (!isInRoom && socket.currentRoomId) {
-          // User is in a different room, don't sync
+        if (!isInRoom) {
+          // Socket not in room yet, send default empty state
+          socket.emit('timer:sync', {
+            mode: 'focus',
+            endsAt: null,
+            isRunning: false,
+            remaining: 0,
+            durations: null,
+          });
           return;
         }
 
-        // Don't require room membership for read-only sync (allows sync during room join)
+        // Socket is in room, send current state
         const state = roomStates.get(roomIdStr);
 
         if (state) {

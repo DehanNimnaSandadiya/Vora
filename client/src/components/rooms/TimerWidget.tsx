@@ -199,26 +199,69 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
         return
       }
 
+      // Wait a bit more to ensure room join is fully processed on backend
+      await new Promise(resolve => setTimeout(resolve, 300))
+
+      // Final check before emitting
+      if (!socket.connected || !isRoomJoined) {
+        toast({
+          title: 'Connection issue',
+          description: 'Room join not complete. Please try again.',
+          variant: 'destructive',
+        })
+        setIsStarting(false)
+        return
+      }
+
+      // Emit timer start and wait for confirmation
+      let timerStarted = false
+      const startTimeout = setTimeout(() => {
+        if (!timerStarted) {
+          setIsStarting(false)
+          toast({
+            title: 'Timer start timeout',
+            description: 'Server did not respond. Please try again.',
+            variant: 'destructive',
+          })
+        }
+      }, 5000)
+
+      const confirmHandler = (state: TimerState) => {
+        // Timer started if endsAt is set (not null) or if it's running
+        if ((state.endsAt !== null && state.endsAt !== undefined) || state.isRunning) {
+          timerStarted = true
+          clearTimeout(startTimeout)
+          socket.off('timer:sync', confirmHandler)
+          setIsStarting(false)
+        }
+      }
+
+      // Set up confirmation handler BEFORE emitting
+      socket.on('timer:sync', confirmHandler)
+      
       // Emit timer start
       socket.emit('timer:start', { roomId, focusMinutes, breakMinutes })
       
       // Show immediate feedback
       toast({
-        title: 'Timer starting',
+        title: 'Starting timer...',
         description: `${focusMinutes} minute focus session`,
       })
-    } catch (error) {
+      
+      // Cleanup handler after timeout
+      setTimeout(() => {
+        socket.off('timer:sync', confirmHandler)
+        if (!timerStarted) {
+          setIsStarting(false)
+        }
+      }, 5000)
+    } catch (error: any) {
       toast({
-        title: 'Error',
-        description: 'Failed to start timer. Please try again.',
+        title: 'Timer failed to start',
+        description: error.message || 'Please wait for connection and try again.',
         variant: 'destructive',
       })
       setIsStarting(false)
-    } finally {
-      // Reset starting flag after a delay
-      setTimeout(() => {
-        setIsStarting(false)
-      }, 1000)
     }
   }
 
