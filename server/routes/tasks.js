@@ -147,10 +147,13 @@ router.post('/:roomId/tasks', createTaskValidation, async (req, res) => {
       });
     }
 
-    // Emit task update via socket (handled in server.js)
+    // Convert to plain object for socket emission
+    const taskObj = task.toObject ? task.toObject() : JSON.parse(JSON.stringify(task));
+
+    // Emit task update via socket
     req.app.get('io').to(req.params.roomId).emit('tasks:updated', {
       action: 'create',
-      task,
+      task: taskObj,
     });
 
     res.status(201).json({
@@ -227,10 +230,14 @@ router.patch('/:taskId', updateTaskValidation, async (req, res) => {
       await task.populate('assignedTo', 'name email avatar');
     }
 
-    // Emit task update via socket
-    req.app.get('io').to(task.roomId.toString()).emit('tasks:updated', {
+    // Convert to plain object for socket emission (handles Mongoose documents)
+    const taskObj = task.toObject ? task.toObject() : JSON.parse(JSON.stringify(task));
+
+    // Emit task update via socket - use roomId as string
+    const roomIdStr = task.roomId.toString();
+    req.app.get('io').to(roomIdStr).emit('tasks:updated', {
       action: 'update',
-      task,
+      task: taskObj,
     });
 
     res.json({

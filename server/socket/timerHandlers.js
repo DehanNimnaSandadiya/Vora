@@ -28,7 +28,7 @@ export const initializeTimerHandlers = (io) => {
   // Timer tick - emit sync every 1 second for active timers
   setInterval(() => {
     const now = Date.now();
-    for (const [roomId, state] of roomStates.entries()) {
+    for (const [roomIdStr, state] of roomStates.entries()) {
       if (state.isRunning && state.endsAt) {
         let remaining = Math.max(0, state.endsAt - now);
         
@@ -51,7 +51,7 @@ export const initializeTimerHandlers = (io) => {
           }
         }
         
-        io.to(roomId).emit('timer:sync', {
+        io.to(roomIdStr).emit('timer:sync', {
           mode: state.mode,
           endsAt: state.endsAt,
           isRunning: state.isRunning,
@@ -61,7 +61,7 @@ export const initializeTimerHandlers = (io) => {
       } else if (!state.isRunning && state.endsAt) {
         // Timer is paused, still emit sync with current remaining time
         const remaining = Math.max(0, state.endsAt - now);
-        io.to(roomId).emit('timer:sync', {
+        io.to(roomIdStr).emit('timer:sync', {
           mode: state.mode,
           endsAt: state.endsAt,
           isRunning: false,
@@ -78,21 +78,26 @@ export const initializeTimerHandlers = (io) => {
       try {
         const { roomId, focusMinutes, breakMinutes } = data;
 
-        if (!roomId || !focusMinutes || !breakMinutes) {
+        if (!roomId || focusMinutes === undefined || breakMinutes === undefined) {
           socket.emit('error', { message: 'Room ID and durations are required' });
           return;
         }
 
-        // Validate user is in the room
-        if (!socket.currentRoomId || socket.currentRoomId !== roomId || !socket.rooms.has(roomId)) {
-          socket.emit('error', { message: 'Not in this room' });
+        // Normalize roomId to string for comparison
+        const roomIdStr = String(roomId);
+        
+        // Check if socket is in the room (more lenient check)
+        const isInRoom = socket.rooms.has(roomIdStr);
+        if (!isInRoom) {
+          logger.warn(`Timer start: Socket ${socket.id} not in room ${roomIdStr}. Current rooms: ${Array.from(socket.rooms).join(', ')}`);
+          socket.emit('error', { message: 'Please join the room first' });
           return;
         }
 
         const now = Date.now();
         const focusMs = focusMinutes * 60 * 1000;
 
-        roomStates.set(roomId, {
+        roomStates.set(roomIdStr, {
           mode: 'focus',
           endsAt: now + focusMs,
           isRunning: true,
@@ -102,8 +107,8 @@ export const initializeTimerHandlers = (io) => {
           },
         });
 
-        // Emit sync to all in room
-        io.to(roomId).emit('timer:sync', {
+        // Emit sync to all in room (including sender)
+        const syncData = {
           mode: 'focus',
           endsAt: now + focusMs,
           isRunning: true,
@@ -112,7 +117,9 @@ export const initializeTimerHandlers = (io) => {
             focusMinutes,
             breakMinutes,
           },
-        });
+        };
+        io.to(roomIdStr).emit('timer:sync', syncData);
+        logger.info(`Timer started in room ${roomIdStr}: ${focusMinutes}min focus / ${breakMinutes}min break`);
       } catch (error) {
         logger.error('Error starting timer:', error);
         socket.emit('error', { message: 'Couldn\'t start timer' });
@@ -129,13 +136,18 @@ export const initializeTimerHandlers = (io) => {
           return;
         }
 
-        // Validate user is in the room
-        if (!socket.currentRoomId || socket.currentRoomId !== roomId || !socket.rooms.has(roomId)) {
-          socket.emit('error', { message: 'Not in this room' });
+        // Normalize roomId to string
+        const roomIdStr = String(roomId);
+        
+        // Check if socket is in the room
+        const isInRoom = socket.rooms.has(roomIdStr);
+        if (!isInRoom) {
+          logger.warn(`Timer pause: Socket ${socket.id} not in room ${roomIdStr}`);
+          socket.emit('error', { message: 'Please join the room first' });
           return;
         }
 
-        const state = roomStates.get(roomId);
+        const state = roomStates.get(roomIdStr);
         if (!state) {
           socket.emit('error', { message: 'Timer not found' });
           return;
@@ -151,7 +163,7 @@ export const initializeTimerHandlers = (io) => {
           // Adjust endsAt to maintain remaining time when resumed
           state.endsAt = now + remaining;
 
-          io.to(roomId).emit('timer:sync', {
+          io.to(roomIdStr).emit('timer:sync', {
             mode: state.mode,
             endsAt: state.endsAt,
             isRunning: false,
@@ -175,13 +187,18 @@ export const initializeTimerHandlers = (io) => {
           return;
         }
 
-        // Validate user is in the room
-        if (!socket.currentRoomId || socket.currentRoomId !== roomId || !socket.rooms.has(roomId)) {
-          socket.emit('error', { message: 'Not in this room' });
+        // Normalize roomId to string
+        const roomIdStr = String(roomId);
+        
+        // Check if socket is in the room
+        const isInRoom = socket.rooms.has(roomIdStr);
+        if (!isInRoom) {
+          logger.warn(`Timer resume: Socket ${socket.id} not in room ${roomIdStr}`);
+          socket.emit('error', { message: 'Please join the room first' });
           return;
         }
 
-        const state = roomStates.get(roomId);
+        const state = roomStates.get(roomIdStr);
         if (!state) {
           socket.emit('error', { message: 'Timer not found' });
           return;
@@ -195,7 +212,7 @@ export const initializeTimerHandlers = (io) => {
           state.isRunning = true;
           state.endsAt = now + remaining;
 
-          io.to(roomId).emit('timer:sync', {
+          io.to(roomIdStr).emit('timer:sync', {
             mode: state.mode,
             endsAt: state.endsAt,
             isRunning: true,
@@ -219,24 +236,29 @@ export const initializeTimerHandlers = (io) => {
           return;
         }
 
-        // Validate user is in the room
-        if (!socket.currentRoomId || socket.currentRoomId !== roomId || !socket.rooms.has(roomId)) {
-          socket.emit('error', { message: 'Not in this room' });
+        // Normalize roomId to string
+        const roomIdStr = String(roomId);
+        
+        // Check if socket is in the room
+        const isInRoom = socket.rooms.has(roomIdStr);
+        if (!isInRoom) {
+          logger.warn(`Timer reset: Socket ${socket.id} not in room ${roomIdStr}`);
+          socket.emit('error', { message: 'Please join the room first' });
           return;
         }
 
-        const state = roomStates.get(roomId);
+        const state = roomStates.get(roomIdStr);
         
         // End any active sessions before resetting
         if (state && state.sessionStartTimes) {
           state.sessionStartTimes.forEach((sessionData, userId) => {
-            endSession(userId, roomId, sessionData);
+            endSession(userId, roomIdStr, sessionData);
           });
         }
 
-        roomStates.delete(roomId);
+        roomStates.delete(roomIdStr);
 
-        io.to(roomId).emit('timer:sync', {
+        io.to(roomIdStr).emit('timer:sync', {
           mode: 'focus',
           endsAt: null,
           isRunning: false,
@@ -265,8 +287,11 @@ export const initializeTimerHandlers = (io) => {
           return;
         }
 
+        // Normalize roomId to string
+        const roomIdStr = String(roomId);
+        
         // Check if user is in the room (but allow if join is in progress)
-        const isInRoom = socket.currentRoomId === roomId && socket.rooms.has(roomId);
+        const isInRoom = socket.currentRoomId === roomIdStr && socket.rooms.has(roomIdStr);
         
         if (!isInRoom && socket.currentRoomId) {
           // User is in a different room, don't sync
@@ -274,7 +299,7 @@ export const initializeTimerHandlers = (io) => {
         }
 
         // Don't require room membership for read-only sync (allows sync during room join)
-        const state = roomStates.get(roomId);
+        const state = roomStates.get(roomIdStr);
 
         if (state) {
           const now = Date.now();

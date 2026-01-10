@@ -75,10 +75,16 @@ export function TasksPanel({ roomId }: TasksPanelProps) {
 
     const handleTaskUpdate = (data: { action: string; task?: Task; taskId?: string }) => {
       if (data.action === 'create' && data.task) {
-        setTasks((prev) => [data.task!, ...prev])
+        setTasks((prev) => {
+          // Avoid duplicates
+          if (prev.some(t => t._id === data.task!._id)) {
+            return prev
+          }
+          return [data.task!, ...prev]
+        })
       } else if (data.action === 'update' && data.task) {
         setTasks((prev) =>
-          prev.map((t) => (t._id === data.task!._id ? data.task! : t))
+          prev.map((t) => (t._id === data.task!._id ? { ...t, ...data.task! } : t))
         )
       } else if (data.action === 'delete' && data.taskId) {
         setTasks((prev) => prev.filter((t) => t._id !== data.taskId))
@@ -119,12 +125,27 @@ export function TasksPanel({ roomId }: TasksPanelProps) {
 
   const handleUpdateStatus = async (taskId: string, status: 'todo' | 'doing' | 'done') => {
     try {
-      await api.patch(`/tasks/${taskId}`, { status })
-      toast({
-        title: 'Task updated',
-        description: 'Task status updated successfully',
-      })
+      // Optimistically update UI
+      setTasks((prev) =>
+        prev.map((t) => (t._id === taskId ? { ...t, status } : t))
+      )
+      
+      const response = await api.patch(`/tasks/${taskId}`, { status })
+      
+      // Update with server response (includes populated fields)
+      if (response.data?.task) {
+        setTasks((prev) =>
+          prev.map((t) => (t._id === taskId ? response.data.task : t))
+        )
+      }
     } catch (err: any) {
+      // Revert optimistic update on error
+      const originalTask = tasks.find(t => t._id === taskId)
+      if (originalTask) {
+        setTasks((prev) =>
+          prev.map((t) => (t._id === taskId ? originalTask : t))
+        )
+      }
       toast({
         title: 'Error',
         description: err.response?.data?.message || 'Couldn\'t update task',

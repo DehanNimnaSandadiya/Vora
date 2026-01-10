@@ -66,31 +66,35 @@ export const initializeRoomHandlers = (io) => {
 
         // Leave previous room if in one
         if (socket.currentRoomId) {
-          socket.leave(socket.currentRoomId);
-          removePresence(socket.currentRoomId, socket.userId);
+          const prevRoomIdStr = String(socket.currentRoomId);
+          socket.leave(prevRoomIdStr);
+          removePresence(prevRoomIdStr, socket.userId);
         }
 
+        // Normalize roomId to string for consistency
+        const roomIdStr = String(roomId);
+        
         // Join new room
-        socket.join(roomId);
-        socket.currentRoomId = roomId;
+        socket.join(roomIdStr);
+        socket.currentRoomId = roomIdStr;
 
         // Add presence
-        if (!roomPresence.has(roomId)) {
-          roomPresence.set(roomId, new Map());
+        if (!roomPresence.has(roomIdStr)) {
+          roomPresence.set(roomIdStr, new Map());
         }
-        roomPresence.get(roomId).set(socket.userId, {
+        roomPresence.get(roomIdStr).set(socket.userId, {
           status: 'idle',
           joinedAt: new Date(),
           user: socket.user,
         });
 
         // Emit updated presence to room
-        emitPresence(io, roomId);
+        emitPresence(io, roomIdStr);
 
-        socket.emit('room:joined', { roomId });
+        socket.emit('room:joined', { roomId: roomIdStr });
         
         // Request timer sync
-        socket.emit('timer:request-sync', { roomId });
+        socket.emit('timer:request-sync', { roomId: roomIdStr });
       } catch (error) {
         logger.error('Error joining room:', error);
         socket.emit('error', { message: 'Couldn\'t join room' });
@@ -274,8 +278,9 @@ export const initializeRoomHandlers = (io) => {
     // Handle disconnect
     socket.on('disconnect', () => {
       if (socket.currentRoomId) {
-        removePresence(socket.currentRoomId, socket.userId);
-        emitPresence(io, socket.currentRoomId);
+        const roomIdStr = String(socket.currentRoomId);
+        removePresence(roomIdStr, socket.userId);
+        emitPresence(io, roomIdStr);
       }
       
       // Remove from active users if no other sockets for this user
