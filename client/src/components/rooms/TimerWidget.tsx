@@ -142,12 +142,13 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
   }, [timerState])
 
   const handleStart = async (focusMinutes: number, breakMinutes: number) => {
-    if (isStarting) return // Prevent multiple simultaneous starts
+    if (isStarting) return
     
-    if (!socket || !isConnected) {
+    // Check socket exists and is actually connected
+    if (!socket || !socket.connected || !isConnected) {
       toast({
         title: 'Not connected',
-        description: 'Please wait for connection to establish',
+        description: 'Waiting for server connection... Please try again in a moment.',
         variant: 'destructive',
       })
       return
@@ -159,11 +160,21 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
       if (!isRoomJoined) {
         // Wait for room join to complete, with timeout
         let attempts = 0
-        const maxAttempts = 6 // 3 seconds total
+        const maxAttempts = 6
         
         while (!isRoomJoined && attempts < maxAttempts) {
           await new Promise(resolve => setTimeout(resolve, 500))
           attempts++
+          // Check if socket disconnected during wait
+          if (!socket.connected) {
+            toast({
+              title: 'Connection lost',
+              description: 'Please wait for reconnection...',
+              variant: 'destructive',
+            })
+            setIsStarting(false)
+            return
+          }
         }
         
         if (!isRoomJoined) {
@@ -177,6 +188,17 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
         }
       }
 
+      // Double-check socket is still connected before emitting
+      if (!socket.connected) {
+        toast({
+          title: 'Connection lost',
+          description: 'Please wait for reconnection and try again.',
+          variant: 'destructive',
+        })
+        setIsStarting(false)
+        return
+      }
+
       // Emit timer start
       socket.emit('timer:start', { roomId, focusMinutes, breakMinutes })
       
@@ -185,8 +207,15 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
         title: 'Timer starting',
         description: `${focusMinutes} minute focus session`,
       })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to start timer. Please try again.',
+        variant: 'destructive',
+      })
+      setIsStarting(false)
     } finally {
-      // Reset starting flag after a short delay to prevent rapid clicks
+      // Reset starting flag after a delay
       setTimeout(() => {
         setIsStarting(false)
       }, 1000)
@@ -194,17 +223,38 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
   }
 
   const handlePause = () => {
-    if (!socket || !isConnected || !isRoomJoined) return
+    if (!socket || !socket.connected || !isConnected || !isRoomJoined) {
+      toast({
+        title: 'Not connected',
+        description: 'Please wait for connection to establish',
+        variant: 'destructive',
+      })
+      return
+    }
     socket.emit('timer:pause', { roomId })
   }
 
   const handleResume = () => {
-    if (!socket || !isConnected || !isRoomJoined) return
+    if (!socket || !socket.connected || !isConnected || !isRoomJoined) {
+      toast({
+        title: 'Not connected',
+        description: 'Please wait for connection to establish',
+        variant: 'destructive',
+      })
+      return
+    }
     socket.emit('timer:resume', { roomId })
   }
 
   const handleReset = () => {
-    if (!socket || !isConnected || !isRoomJoined) return
+    if (!socket || !socket.connected || !isConnected || !isRoomJoined) {
+      toast({
+        title: 'Not connected',
+        description: 'Please wait for connection to establish',
+        variant: 'destructive',
+      })
+      return
+    }
     socket.emit('timer:reset', { roomId })
   }
 

@@ -144,8 +144,8 @@ export function RoomDetail() {
                 </Badge>
               )}
               {!isConnected && (
-                <Badge variant="outline" className="rounded-2xl">
-                  Connecting...
+                <Badge variant="outline" className="rounded-2xl bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+                  Connecting to server...
                 </Badge>
               )}
             </div>
