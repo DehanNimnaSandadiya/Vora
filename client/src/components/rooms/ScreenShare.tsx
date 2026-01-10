@@ -26,12 +26,21 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
     if (!socket) return;
     
     try {
+      // Close existing peer connection if any
+      if (pcRef.current) {
+        pcRef.current.close();
+        pcRef.current = null;
+      }
+
       const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+        ],
       });
 
       pc.onicecandidate = (event) => {
-        if (event.candidate && socket) {
+        if (event.candidate && socket && socket.connected) {
           socket.emit('screenshare:ice-candidate', {
             roomId,
             candidate: event.candidate,
@@ -40,11 +49,53 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
       };
 
       pc.ontrack = (event) => {
-        if (event.streams && event.streams[0] && remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-        } else if (event.track && remoteVideoRef.current) {
-          const stream = new MediaStream([event.track]);
-          remoteVideoRef.current.srcObject = stream;
+        console.log('Received track event:', event);
+        // Use setTimeout to ensure DOM is updated
+        setTimeout(() => {
+          if (event.streams && event.streams.length > 0) {
+            if (remoteVideoRef.current) {
+              remoteVideoRef.current.srcObject = event.streams[0];
+              remoteVideoRef.current.play().catch(console.error);
+              console.log('Set remote video stream from streams');
+            } else {
+              console.warn('Remote video ref not available yet, retrying...');
+              setTimeout(() => {
+                if (remoteVideoRef.current && event.streams[0]) {
+                  remoteVideoRef.current.srcObject = event.streams[0];
+                  remoteVideoRef.current.play().catch(console.error);
+                }
+              }, 100);
+            }
+          } else if (event.track) {
+            const stream = new MediaStream([event.track]);
+            if (remoteVideoRef.current) {
+              remoteVideoRef.current.srcObject = stream;
+              remoteVideoRef.current.play().catch(console.error);
+              console.log('Set remote video stream from track');
+            } else {
+              console.warn('Remote video ref not available yet, retrying...');
+              setTimeout(() => {
+                if (remoteVideoRef.current) {
+                  remoteVideoRef.current.srcObject = stream;
+                  remoteVideoRef.current.play().catch(console.error);
+                }
+              }, 100);
+            }
+          }
+        }, 0);
+      };
+
+      pc.onconnectionstatechange = () => {
+        console.log('Peer connection state:', pc.connectionState);
+        if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+          console.error('Peer connection failed or disconnected');
+          toast({
+            title: 'Connection issue',
+            description: 'Screen share connection lost',
+            variant: 'destructive',
+          });
+        } else if (pc.connectionState === 'connected') {
+          console.log('Peer connection established successfully');
         }
       };
 
@@ -59,11 +110,12 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
       });
 
       pcRef.current = pc;
+      setSharerId(sharerSocketId);
     } catch (error: any) {
       console.error('Error receiving offer:', error);
       toast({
         title: 'Screen share error',
-        description: 'Failed to receive screen share',
+        description: error.message || 'Failed to receive screen share',
         variant: 'destructive',
       });
     }
@@ -86,13 +138,24 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
   useEffect(() => {
     if (!socket || !isConnected || !isRoomJoined) return;
 
-    const handleScreenShareStart = (data: { userId: string; offer: RTCSessionDescriptionInit }) => {
-      if (!data.userId || !data.offer) return;
-      if (isSharing) return;
+    const handleScreenShareStart = async (data: { userId: string; offer: RTCSessionDescriptionInit }) => {
+      if (!data.userId || !data.offer) {
+        console.warn('Invalid screen share start data:', data);
+        return;
+      }
+      if (isSharing) {
+        console.log('Already sharing, ignoring start event');
+        return;
+      }
+      if (socket?.id === data.userId) {
+        console.log('Ignoring own screen share start event');
+        return;
+      }
 
+      console.log('Received screen share start from:', data.userId);
       setSharerId(data.userId);
       setIsViewing(true);
-      handleReceiveOffer(data.offer, data.userId).catch(console.error);
+      await handleReceiveOffer(data.offer, data.userId);
     };
 
     const handleScreenShareStop = () => {
@@ -100,20 +163,28 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
     };
 
     const handleIceCandidate = async (data: { userId: string; candidate: RTCIceCandidateInit }) => {
-      if (!data.candidate) return;
+      if (!data.candidate || !data.userId) return;
       
       if (isSharing && sharerPcRef.current) {
+        // If we're sharing, only accept ICE candidates from viewers (not from ourselves)
         if (data.userId === socket?.id) return;
         try {
           await sharerPcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } catch (error) {
-          console.error('Error adding ICE candidate to sharer PC:', error);
+          console.log('Added ICE candidate to sharer PC from:', data.userId);
+        } catch (error: any) {
+          // Ignore if candidate already added or connection is closing
+          if (error.message && !error.message.includes('already') && !error.message.includes('closing')) {
+            console.error('Error adding ICE candidate to sharer PC:', error);
+          }
         }
-      } else if (isViewing && pcRef.current) {
-        if (data.userId === sharerId) {
-          try {
-            await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-          } catch (error) {
+      } else if (isViewing && pcRef.current && data.userId === sharerId) {
+        // If we're viewing, only accept ICE candidates from the sharer
+        try {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+          console.log('Added ICE candidate to viewer PC from sharer');
+        } catch (error: any) {
+          // Ignore if candidate already added or connection is closing
+          if (error.message && !error.message.includes('already') && !error.message.includes('closing')) {
             console.error('Error adding ICE candidate to viewer PC:', error);
           }
         }
@@ -121,13 +192,22 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
     };
 
     const handleAnswer = async (data: { userId: string; answer: RTCSessionDescriptionInit }) => {
-      if (!isSharing || !sharerPcRef.current || !data.answer) return;
+      if (!isSharing || !sharerPcRef.current || !data.answer || !data.userId) return;
       if (data.userId === socket?.id) return;
       
       try {
+        console.log('Received answer from viewer:', data.userId);
         await sharerPcRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
-      } catch (error) {
+        console.log('Set remote description for viewer:', data.userId);
+      } catch (error: any) {
         console.error('Error setting remote description:', error);
+        if (error.message && !error.message.includes('already')) {
+          toast({
+            title: 'Screen share error',
+            description: 'Failed to connect with viewer',
+            variant: 'destructive',
+          });
+        }
       }
     };
 
@@ -188,10 +268,26 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
       };
 
       stream.getVideoTracks()[0].onended = () => {
+        console.log('Screen share track ended by user');
         handleStopShare();
       };
 
-      const offer = await pc.createOffer();
+      pc.onconnectionstatechange = () => {
+        console.log('Sharer peer connection state:', pc.connectionState);
+        if (pc.connectionState === 'failed') {
+          console.error('Peer connection failed');
+          toast({
+            title: 'Connection failed',
+            description: 'Failed to establish connection with viewers',
+            variant: 'destructive',
+          });
+        }
+      };
+
+      const offer = await pc.createOffer({
+        offerToReceiveVideo: false,
+        offerToReceiveAudio: false,
+      });
       await pc.setLocalDescription(offer);
 
       socket.emit('screenshare:start', {
@@ -200,6 +296,7 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
       });
 
       sharerPcRef.current = pc;
+      console.log('Screen share started, offer sent to room');
     } catch (error: any) {
       if (error.name === 'NotAllowedError') {
         toast({
@@ -312,22 +409,37 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
               <p className="text-sm text-muted-foreground">Sharing your screen - visible to all room members</p>
             </>
           )}
-          {isViewing && !isSharing && (
+          {!isSharing && (
             <>
+              {/* Always render remote video element to ensure ref exists */}
               <video
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
-                className="w-full rounded-lg border bg-black"
-                style={{ maxHeight: '400px', minHeight: '300px', objectFit: 'contain' }}
+                muted={false}
+                className={isViewing ? 'w-full rounded-lg border bg-black' : 'hidden'}
+                style={isViewing ? { maxHeight: '400px', minHeight: '300px', objectFit: 'contain' } : { display: 'none' }}
+                onLoadedMetadata={() => {
+                  console.log('Remote video metadata loaded');
+                  if (remoteVideoRef.current && isViewing) {
+                    remoteVideoRef.current.play().catch(console.error);
+                  }
+                }}
+                onError={(e) => {
+                  console.error('Remote video error:', e);
+                }}
+                onCanPlay={() => {
+                  console.log('Remote video can play');
+                }}
               />
-              <p className="text-sm text-muted-foreground">Viewing shared screen</p>
+              {isViewing ? (
+                <p className="text-sm text-muted-foreground">Viewing shared screen from {sharerId ? 'another user' : 'someone'}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Share your screen with room members. Only one person can share at a time.
+                </p>
+              )}
             </>
-          )}
-          {!isSharing && !isViewing && (
-            <p className="text-sm text-muted-foreground">
-              Share your screen with room members. Only one person can share at a time.
-            </p>
           )}
         </div>
       </CardContent>

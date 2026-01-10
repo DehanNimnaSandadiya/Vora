@@ -74,10 +74,23 @@ export const initializeScreenShareHandlers = (io) => {
           return;
         }
 
-        socket.to(roomIdStr).emit('screenshare:ice-candidate', {
-          userId: socket.id,
-          candidate,
-        });
+        // Check if this socket is the sharer
+        const sharerId = activeSharers.get(roomIdStr);
+        if (sharerId === socket.id) {
+          // Sharer's ICE candidates go to all viewers
+          socket.to(roomIdStr).emit('screenshare:ice-candidate', {
+            userId: socket.id,
+            candidate,
+          });
+        } else {
+          // Viewer's ICE candidates go only to the sharer
+          if (sharerId) {
+            io.to(sharerId).emit('screenshare:ice-candidate', {
+              userId: socket.id,
+              candidate,
+            });
+          }
+        }
       } catch (error) {
         logger.error('Error handling ICE candidate:', error);
       }
