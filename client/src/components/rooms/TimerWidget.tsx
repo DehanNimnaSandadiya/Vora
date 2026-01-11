@@ -234,8 +234,11 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
         clearTimeout(startTimeoutRef.current)
       }
       
+      isStartingRef.current = true
+      
       startTimeoutRef.current = setTimeout(() => {
         if (!timerConfirmed) {
+          isStartingRef.current = false
           setIsStarting(false)
           confirmHandlerRef.current = null
           toast({
@@ -249,6 +252,7 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
       confirmHandlerRef.current = (state: TimerState) => {
         if (state.startedAt !== null && state.endsAt !== null) {
           timerConfirmed = true
+          isStartingRef.current = false
           if (startTimeoutRef.current) {
             clearTimeout(startTimeoutRef.current)
             startTimeoutRef.current = null
