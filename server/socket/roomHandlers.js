@@ -92,13 +92,6 @@ export const initializeRoomHandlers = (io) => {
         emitPresence(io, roomIdStr);
 
         socket.emit('room:joined', { roomId: roomIdStr });
-        
-        // Small delay before requesting timer sync to ensure join is fully processed
-        setTimeout(() => {
-          if (socket.connected && socket.rooms.has(roomIdStr)) {
-            socket.emit('timer:request-sync', { roomId: roomIdStr });
-          }
-        }, 200);
       } catch (error) {
         logger.error('Error joining room:', error);
         socket.emit('error', { message: 'Couldn\'t join room' });
@@ -280,25 +273,21 @@ export const initializeRoomHandlers = (io) => {
       }
     });
 
-    // Handle disconnect
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
+      logger.info(`Socket disconnected: ${socket.userId} (${socket.id}), reason: ${reason}`);
       if (socket.currentRoomId) {
         const roomIdStr = String(socket.currentRoomId);
         removePresence(roomIdStr, socket.userId);
         emitPresence(io, roomIdStr);
       }
       
-      // Remove from active users if no other sockets for this user
       if (socket.userId) {
-        // Check all sockets to see if user still has any active connections
         const userSockets = Array.from(io.sockets.sockets.values())
           .filter(s => s.userId === socket.userId && s.id !== socket.id);
         if (userSockets.length === 0) {
           activeSocketUsers.delete(socket.userId);
         }
       }
-      
-      logger.info(`Socket disconnected: ${socket.userId} (${socket.id})`);
     });
   });
 };

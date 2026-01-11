@@ -350,10 +350,10 @@ router.get('/:id/call', async (req, res) => {
 
     const domain = process.env.JITSI_DOMAIN || 'meet.jit.si';
     
-    // Generate deterministic room name: vora-<roomId>-<shortHash>
+    // Generate unique room name per call to avoid members-only/lobby issues
     const roomIdStr = req.params.id.toString();
-    const hash = crypto.createHash('sha256').update(roomIdStr).digest('hex').substring(0, 8);
-    const roomName = `vora-${roomIdStr}-${hash}`;
+    const randomId = crypto.randomBytes(4).toString('hex');
+    const roomName = `vora-${roomIdStr}-${randomId}`;
 
     res.json({
       success: true,
