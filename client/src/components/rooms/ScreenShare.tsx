@@ -85,6 +85,10 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
         }, 0);
       };
 
+      pc.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', pc.iceConnectionState);
+      };
+      
       pc.onconnectionstatechange = () => {
         console.log('Peer connection state:', pc.connectionState);
         if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
@@ -97,6 +101,10 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
         } else if (pc.connectionState === 'connected') {
           console.log('Peer connection established successfully');
         }
+      };
+      
+      pc.onnegotiationneeded = () => {
+        console.log('Negotiation needed for viewer peer connection');
       };
 
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
@@ -279,28 +287,51 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
       });
 
       localStreamRef.current = stream;
-      setIsSharing(true);
       
-      // Wait for React to render video element, then set stream
-      requestAnimationFrame(() => {
-        if (localVideoRef.current && stream) {
-          localVideoRef.current.srcObject = stream;
-        }
+      // Log stream tracks for debugging
+      console.log('Screen share stream obtained:', {
+        videoTracks: stream.getVideoTracks().map(t => ({
+          id: t.id,
+          label: t.label,
+          enabled: t.enabled,
+          muted: t.muted,
+          readyState: t.readyState,
+          kind: t.kind,
+        })),
+        audioTracks: stream.getAudioTracks().map(t => ({
+          id: t.id,
+          label: t.label,
+          enabled: t.enabled,
+          muted: t.muted,
+          readyState: t.readyState,
+          kind: t.kind,
+        })),
       });
+      
+      // Set local preview immediately
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        localVideoRef.current.play().catch(err => console.error('Error playing local video:', err));
+        console.log('Local preview srcObject set');
+      }
+      
+      setIsSharing(true);
 
-      stream.getVideoTracks()[0].onended = () => {
+      const screenTrack = stream.getVideoTracks()[0];
+      screenTrack.onended = () => {
         console.log('Screen share track ended by user');
         handleStopShare();
       };
 
-      // Create a single offer that will be used by all viewers
-      // We'll create individual peer connections per viewer when they connect
+      // Create offer for signaling - we'll create individual PCs per viewer when they answer
       const offerPc = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
       });
       
+      // Add screen track to offer PC
       stream.getTracks().forEach((track) => {
         offerPc.addTrack(track, stream);
+        console.log('Added track to offer PC:', track.kind, track.id, track.label);
       });
 
       const offer = await offerPc.createOffer({
@@ -308,6 +339,7 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
         offerToReceiveAudio: false,
       });
       await offerPc.setLocalDescription(offer);
+      console.log('Offer created for screen share');
       
       // Close offer PC after getting the offer - we'll create new ones per viewer
       offerPc.close();

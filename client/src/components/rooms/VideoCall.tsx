@@ -95,8 +95,11 @@ export function VideoCall({ roomId }: VideoCallProps) {
           enableClosePage: false,
           requireDisplayName: false,
           prejoinPageEnabled: false,
-          disableThirdPartyRequests: false,
           enableLobby: false,
+          enableUserRolesBasedOnToken: false,
+          enableNoAudioDetection: false,
+          enableNoisyMicDetection: false,
+          disableThirdPartyRequests: false,
           enableInsecureRoomNameWarning: false,
         },
         interfaceConfigOverwrite: {
@@ -146,8 +149,36 @@ export function VideoCall({ roomId }: VideoCallProps) {
         }
       };
 
-      jitsiApi.addEventListener('readyToClose', leaveHandler);
-      jitsiApi.addEventListener('videoConferenceLeft', leaveHandler);
+      // Log Jitsi events for debugging
+      jitsiApi.addEventListener('readyToClose', () => {
+        console.log('Jitsi: readyToClose');
+        leaveHandler();
+      });
+      jitsiApi.addEventListener('videoConferenceJoined', () => {
+        console.log('Jitsi: videoConferenceJoined');
+      });
+      jitsiApi.addEventListener('videoConferenceLeft', () => {
+        console.log('Jitsi: videoConferenceLeft');
+        leaveHandler();
+      });
+      jitsiApi.addEventListener('conferenceFailed', (error: any) => {
+        console.error('Jitsi: conferenceFailed', error);
+        toast({
+          title: 'Conference failed',
+          description: error?.error || 'Failed to join conference',
+          variant: 'destructive',
+        });
+      });
+      jitsiApi.addEventListener('errorOccurred', (error: any) => {
+        console.error('Jitsi: errorOccurred', error);
+        if (error?.error && !error.error.includes('membersOnly')) {
+          toast({
+            title: 'Conference error',
+            description: error.error,
+            variant: 'destructive',
+          });
+        }
+      });
 
       jitsiApiRef.current = jitsiApi;
       setIsLoading(false);
