@@ -93,6 +93,11 @@ export function VideoCall({ roomId }: VideoCallProps) {
           startWithVideoMuted: false,
           enableWelcomePage: false,
           enableClosePage: false,
+          requireDisplayName: false,
+          prejoinPageEnabled: false,
+          disableThirdPartyRequests: false,
+          enableLobby: false,
+          enableInsecureRoomNameWarning: false,
         },
         interfaceConfigOverwrite: {
           TOOLBAR_BUTTONS: [

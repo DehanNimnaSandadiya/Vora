@@ -20,7 +20,7 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
-  const sharerPcRef = useRef<RTCPeerConnection | null>(null);
+  const sharerPcsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
 
   const handleReceiveOffer = useCallback(async (offer: RTCSessionDescriptionInit, sharerSocketId: string) => {
     if (!socket) return;
@@ -165,16 +165,18 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
     const handleIceCandidate = async (data: { userId: string; candidate: RTCIceCandidateInit }) => {
       if (!data.candidate || !data.userId) return;
       
-      if (isSharing && sharerPcRef.current) {
-        // If we're sharing, only accept ICE candidates from viewers (not from ourselves)
+      if (isSharing) {
+        // If we're sharing, accept ICE candidates from viewers
         if (data.userId === socket?.id) return;
-        try {
-          await sharerPcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-          console.log('Added ICE candidate to sharer PC from:', data.userId);
-        } catch (error: any) {
-          // Ignore if candidate already added or connection is closing
-          if (error.message && !error.message.includes('already') && !error.message.includes('closing')) {
-            console.error('Error adding ICE candidate to sharer PC:', error);
+        const viewerPc = sharerPcsRef.current.get(data.userId);
+        if (viewerPc) {
+          try {
+            await viewerPc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            console.log('Added ICE candidate to sharer PC for viewer:', data.userId);
+          } catch (error: any) {
+            if (error.message && !error.message.includes('already') && !error.message.includes('closing')) {
+              console.error('Error adding ICE candidate to sharer PC:', error);
+            }
           }
         }
       } else if (isViewing && pcRef.current && data.userId === sharerId) {
@@ -183,7 +185,6 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
           await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
           console.log('Added ICE candidate to viewer PC from sharer');
         } catch (error: any) {
-          // Ignore if candidate already added or connection is closing
           if (error.message && !error.message.includes('already') && !error.message.includes('closing')) {
             console.error('Error adding ICE candidate to viewer PC:', error);
           }
@@ -192,15 +193,52 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
     };
 
     const handleAnswer = async (data: { userId: string; answer: RTCSessionDescriptionInit }) => {
-      if (!isSharing || !sharerPcRef.current || !data.answer || !data.userId) return;
+      if (!isSharing || !data.answer || !data.userId) return;
       if (data.userId === socket?.id) return;
       
       try {
         console.log('Received answer from viewer:', data.userId);
-        await sharerPcRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
-        console.log('Set remote description for viewer:', data.userId);
+        let viewerPc = sharerPcsRef.current.get(data.userId);
+        
+        if (!viewerPc && localStreamRef.current) {
+          // Create new peer connection for this viewer
+          viewerPc = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+          });
+          
+          // Add all tracks from local stream
+          localStreamRef.current.getTracks().forEach((track) => {
+            viewerPc!.addTrack(track, localStreamRef.current!);
+          });
+          
+          viewerPc.onicecandidate = (event) => {
+            if (event.candidate && socket && socket.connected) {
+              socket.emit('screenshare:ice-candidate', {
+                roomId,
+                candidate: event.candidate,
+              });
+            }
+          };
+          
+          viewerPc.onconnectionstatechange = () => {
+            console.log(`Viewer ${data.userId} connection state:`, viewerPc!.connectionState);
+            if (viewerPc!.connectionState === 'failed' || viewerPc!.connectionState === 'disconnected') {
+              console.log(`Removing peer connection for viewer ${data.userId}`);
+              viewerPc!.close();
+              sharerPcsRef.current.delete(data.userId);
+            }
+          };
+          
+          sharerPcsRef.current.set(data.userId, viewerPc);
+          console.log('Created new peer connection for viewer:', data.userId);
+        }
+        
+        if (viewerPc) {
+          await viewerPc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          console.log('Set remote description for viewer:', data.userId);
+        }
       } catch (error: any) {
-        console.error('Error setting remote description:', error);
+        console.error('Error handling answer:', error);
         if (error.message && !error.message.includes('already')) {
           toast({
             title: 'Screen share error',
@@ -250,52 +288,35 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
         }
       });
 
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-      });
-
-      stream.getTracks().forEach((track) => {
-        pc.addTrack(track, stream);
-      });
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit('screenshare:ice-candidate', {
-            roomId,
-            candidate: event.candidate,
-          });
-        }
-      };
-
       stream.getVideoTracks()[0].onended = () => {
         console.log('Screen share track ended by user');
         handleStopShare();
       };
 
-      pc.onconnectionstatechange = () => {
-        console.log('Sharer peer connection state:', pc.connectionState);
-        if (pc.connectionState === 'failed') {
-          console.error('Peer connection failed');
-          toast({
-            title: 'Connection failed',
-            description: 'Failed to establish connection with viewers',
-            variant: 'destructive',
-          });
-        }
-      };
+      // Create a single offer that will be used by all viewers
+      // We'll create individual peer connections per viewer when they connect
+      const offerPc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      });
+      
+      stream.getTracks().forEach((track) => {
+        offerPc.addTrack(track, stream);
+      });
 
-      const offer = await pc.createOffer({
+      const offer = await offerPc.createOffer({
         offerToReceiveVideo: false,
         offerToReceiveAudio: false,
       });
-      await pc.setLocalDescription(offer);
+      await offerPc.setLocalDescription(offer);
+      
+      // Close offer PC after getting the offer - we'll create new ones per viewer
+      offerPc.close();
 
       socket.emit('screenshare:start', {
         roomId,
         offer,
       });
 
-      sharerPcRef.current = pc;
       console.log('Screen share started, offer sent to room');
     } catch (error: any) {
       if (error.name === 'NotAllowedError') {
@@ -320,10 +341,12 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
       localStreamRef.current = null;
     }
 
-    if (sharerPcRef.current) {
-      sharerPcRef.current.close();
-      sharerPcRef.current = null;
-    }
+    // Close all viewer peer connections
+    sharerPcsRef.current.forEach((pc, viewerId) => {
+      pc.close();
+      console.log('Closed peer connection for viewer:', viewerId);
+    });
+    sharerPcsRef.current.clear();
 
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
@@ -348,10 +371,10 @@ export function ScreenShare({ roomId, isRoomJoined = true }: ScreenShareProps) {
         localStreamRef.current.getTracks().forEach((track) => track.stop());
         localStreamRef.current = null;
       }
-      if (sharerPcRef.current) {
-        sharerPcRef.current.close();
-        sharerPcRef.current = null;
-      }
+      sharerPcsRef.current.forEach((pc) => {
+        pc.close();
+      });
+      sharerPcsRef.current.clear();
       if (pcRef.current) {
         pcRef.current.close();
         pcRef.current = null;

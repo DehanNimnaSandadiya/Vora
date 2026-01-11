@@ -44,13 +44,17 @@ export const initializeRoomHandlers = (io) => {
         const { roomId } = data;
 
         if (!roomId) {
+          logger.warn(`room:join failed: No roomId provided. socket.id: ${socket.id}`);
           socket.emit('error', { message: 'Room ID is required' });
           return;
         }
 
+        logger.info(`room:join request: roomId=${roomId}, socket.id=${socket.id}, userId=${socket.userId}`);
+
         const room = await Room.findById(roomId);
 
         if (!room) {
+          logger.warn(`room:join failed: Room not found. roomId=${roomId}, socket.id=${socket.id}`);
           socket.emit('error', { message: 'Room not found' });
           return;
         }
@@ -60,6 +64,7 @@ export const initializeRoomHandlers = (io) => {
                          room.members.some(memberId => memberId.toString() === socket.userId);
 
         if (!isMember && room.isPrivate) {
+          logger.warn(`room:join failed: Access denied. roomId=${roomId}, userId=${socket.userId}, socket.id=${socket.id}`);
           socket.emit('error', { message: 'Access denied' });
           return;
         }
@@ -77,6 +82,7 @@ export const initializeRoomHandlers = (io) => {
         // Join new room
         socket.join(roomIdStr);
         socket.currentRoomId = roomIdStr;
+        logger.info(`room:join success: socket.id=${socket.id}, roomId=${roomIdStr}, socket.currentRoomId=${socket.currentRoomId}`);
 
         // Add presence
         if (!roomPresence.has(roomIdStr)) {

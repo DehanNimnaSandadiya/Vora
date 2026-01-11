@@ -39,11 +39,12 @@ const app = express();
 
 // Normalize CLIENT_URL - remove trailing slash for CORS matching
 const normalizeUrl = (url) => {
-  if (!url) return 'http://localhost:5173';
+  if (!url) return null;
   return url.replace(/\/+$/, ''); // Remove trailing slashes
 };
 
-const CLIENT_URL = normalizeUrl(process.env.CLIENT_URL);
+const CLIENT_URL = normalizeUrl(process.env.CLIENT_URL) || 'http://localhost:5173';
+const isDevelopment = process.env.NODE_ENV !== 'production';
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -52,11 +53,17 @@ const io = new Server(httpServer, {
       if (!origin) {
         return callback(new Error('No origin header'));
       }
+      
+      // In development, allow localhost with any port
+      if (isDevelopment && origin.startsWith('http://localhost:')) {
+        return callback(null, origin);
+      }
+      
       const normalizedOrigin = normalizeUrl(origin);
       if (normalizedOrigin === CLIENT_URL) {
         callback(null, origin);
       } else {
-        logger.warn(`Socket.io CORS blocked: ${origin} (normalized: ${normalizedOrigin}) not matching ${CLIENT_URL}`);
+        logger.warn(`Socket.io CORS blocked: ${origin} not matching ${CLIENT_URL}`);
         callback(new Error('Not allowed by CORS'));
       }
     },
@@ -82,22 +89,23 @@ if (!process.env.PORT && process.env.NODE_ENV === 'production') {
 // Security middleware
 app.use(helmetConfig);
 
-// CORS - strict with CLIENT_URL (handles trailing slashes)
+// CORS - allow localhost in development, strict in production
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
     
+    // In development, allow localhost with any port
+    if (isDevelopment && origin.startsWith('http://localhost:')) {
+      return callback(null, origin);
+    }
+    
     // Normalize both incoming origin and allowed origin (remove trailing slashes)
     const normalizedOrigin = normalizeUrl(origin);
-    const normalizedAllowed = CLIENT_URL;
-    
-    // Check if normalized origins match
-    if (normalizedOrigin === normalizedAllowed) {
-      // Return the exact origin that was requested (CORS requirement)
+    if (normalizedOrigin === CLIENT_URL) {
       callback(null, origin);
     } else {
-      logger.warn(`CORS blocked: ${origin} (normalized: ${normalizedOrigin}) not matching ${normalizedAllowed}`);
+      logger.warn(`CORS blocked: ${origin} not matching ${CLIENT_URL}`);
       callback(new Error('Not allowed by CORS'));
     }
   },

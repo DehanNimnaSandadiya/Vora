@@ -1,6 +1,7 @@
 import { logger } from '../utils/logger.js';
 import StudySession from '../models/StudySession.js';
 import User from '../models/User.js';
+import Room from '../models/Room.js';
 import { checkAndAwardBadges } from '../utils/badges.js';
 
 // Server-authoritative timer state per room
@@ -101,7 +102,7 @@ export const initializeTimerHandlers = (io) => {
 
   io.on('connection', (socket) => {
     // Get timer state
-    socket.on('timer:get', (data) => {
+    socket.on('timer:get', async (data) => {
       try {
         const { roomId } = data;
         if (!roomId) {
@@ -114,12 +115,33 @@ export const initializeTimerHandlers = (io) => {
 
         const roomIdStr = String(roomId);
         
+        logger.info(`timer:get request: socket.id=${socket.id}, requested roomId=${roomIdStr}, socket.currentRoomId=${socket.currentRoomId}`);
+        
         if (!socket.currentRoomId || String(socket.currentRoomId) !== roomIdStr) {
-          socket.emit('timer:state', {
-            roomId: roomIdStr,
-            state: null,
-          });
-          return;
+          logger.warn(`timer:get: Socket not in room, attempting auto-join. socket.id=${socket.id}, socket.currentRoomId: ${socket.currentRoomId}, requested roomId: ${roomIdStr}`);
+          
+          try {
+            const room = await Room.findById(roomId);
+            if (!room) {
+              socket.emit('timer:state', { roomId: roomIdStr, state: null });
+              return;
+            }
+            
+            const isMember = room.owner._id.toString() === socket.userId ||
+                             room.members.some(memberId => memberId.toString() === socket.userId);
+            if (!isMember && room.isPrivate) {
+              socket.emit('timer:state', { roomId: roomIdStr, state: null });
+              return;
+            }
+            
+            socket.join(roomIdStr);
+            socket.currentRoomId = roomIdStr;
+            logger.info(`Auto-joined room for timer:get: socket.id=${socket.id}, roomId=${roomIdStr}`);
+          } catch (err) {
+            logger.error('Error auto-joining room for timer:get:', err);
+            socket.emit('timer:state', { roomId: roomIdStr, state: null });
+            return;
+          }
         }
 
         const state = roomStates.get(roomIdStr);
@@ -164,16 +186,44 @@ export const initializeTimerHandlers = (io) => {
         const { roomId, focusMinutes, breakMinutes } = data;
 
         if (!roomId || focusMinutes === undefined || breakMinutes === undefined) {
+          logger.warn(`Timer start failed: Missing parameters. roomId: ${roomId}, focusMinutes: ${focusMinutes}, breakMinutes: ${breakMinutes}`);
           socket.emit('error', { message: 'Room ID and durations are required' });
           return;
         }
 
         const roomIdStr = String(roomId);
         
+        logger.info(`Timer start received: socket.id=${socket.id}, socket.currentRoomId=${socket.currentRoomId}, requested roomId=${roomIdStr}`);
+        
         if (!socket.currentRoomId || String(socket.currentRoomId) !== roomIdStr) {
-          socket.emit('error', { message: 'Please join the room first' });
-          return;
+          logger.warn(`Timer start failed: Socket not in room. socket.id=${socket.id}, socket.currentRoomId: ${socket.currentRoomId}, requested roomId: ${roomIdStr}`);
+          
+          // Try to join the room if not already in it
+          try {
+            const room = await Room.findById(roomId);
+            if (room) {
+              const isMember = room.owner._id.toString() === socket.userId ||
+                               room.members.some(memberId => memberId.toString() === socket.userId);
+              if (isMember || !room.isPrivate) {
+                socket.join(roomIdStr);
+                socket.currentRoomId = roomIdStr;
+                logger.info(`Auto-joined room for timer: socket.id=${socket.id}, roomId=${roomIdStr}`);
+              } else {
+                socket.emit('error', { message: 'Access denied' });
+                return;
+              }
+            } else {
+              socket.emit('error', { message: 'Room not found' });
+              return;
+            }
+          } catch (err) {
+            logger.error('Error auto-joining room for timer:', err);
+            socket.emit('error', { message: 'Please join the room first' });
+            return;
+          }
         }
+        
+        logger.info(`Timer start request received: roomId=${roomIdStr}, focus=${focusMinutes}min, break=${breakMinutes}min`);
 
         const now = Date.now();
         const focusSec = focusMinutes * 60;
