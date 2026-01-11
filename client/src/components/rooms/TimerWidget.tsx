@@ -7,13 +7,12 @@ import { useToast } from '@/hooks/useToast'
 
 interface TimerState {
   mode: 'focus' | 'break'
-  endsAt: number | null
   isRunning: boolean
-  remaining: number
-  durations: {
-    focusMinutes: number
-    breakMinutes: number
-  } | null
+  durationsSec: { focus: number; break: number } | null
+  remainingSec: number
+  startedAt: number | null
+  endsAt: number | null
+  updatedAt: number
 }
 
 interface TimerWidgetProps {
@@ -31,10 +30,12 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
   const { socket, isConnected } = useSocket()
   const [timerState, setTimerState] = useState<TimerState>({
     mode: 'focus',
-    endsAt: null,
     isRunning: false,
-    remaining: 0,
-    durations: null,
+    durationsSec: null,
+    remainingSec: 0,
+    startedAt: null,
+    endsAt: null,
+    updatedAt: 0,
   })
   const [displayTime, setDisplayTime] = useState('00:00')
   const [isStarting, setIsStarting] = useState(false)
@@ -48,61 +49,65 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
   useEffect(() => {
     if (!socket || !isConnected) return
 
-    const handleSync = (state: TimerState) => {
-      console.log('Timer sync received:', state);
-      // Always update state with server sync - this ensures real-time updates
-      setTimerState(state)
+    const handleTimerState = (data: { roomId: string; state: TimerState | null }) => {
+      if (data.roomId !== roomId) return
       
-      // Check if we're waiting for timer start confirmation
-      if (isStartingRef.current && confirmHandlerRef.current) {
-        confirmHandlerRef.current(state)
+      if (data.state) {
+        setTimerState(data.state)
+        
+        if (isStartingRef.current && confirmHandlerRef.current) {
+          confirmHandlerRef.current(data.state)
+        }
+      } else {
+        setTimerState({
+          mode: 'focus',
+          isRunning: false,
+          durationsSec: null,
+          remainingSec: 0,
+          startedAt: null,
+          endsAt: null,
+          updatedAt: 0,
+        })
       }
     }
 
     const handleError = (error: { message: string }) => {
       const errorMsg = error.message || ''
       
-      // Completely suppress "join the room" errors - they're expected during room join process
       if (errorMsg.includes('Not in this room') || errorMsg.includes('join the room') || errorMsg.includes('Please join')) {
-        // Silently ignore these errors - they'll resolve when room join completes
         return
       }
       
-      // Debounce duplicate errors (same error within 3 seconds)
       if (errorMsg === lastErrorRef.current) {
         return
       }
       lastErrorRef.current = errorMsg
       
-      // Clear previous error toast timeout
       if (errorToastRef.current) {
         clearTimeout(errorToastRef.current)
       }
       
-      // Show other errors (debounced, but only show once)
       errorToastRef.current = setTimeout(() => {
         toast({
           title: 'Timer error',
           description: errorMsg || 'Something went wrong',
           variant: 'destructive',
         })
-        // Reset after longer delay to prevent spam
         setTimeout(() => {
           lastErrorRef.current = null
         }, 3000)
       }, 1000)
     }
 
-    socket.on('timer:sync', handleSync)
+    socket.on('timer:state', handleTimerState)
     socket.on('error', handleError)
     
     let syncTimeout: ReturnType<typeof setTimeout> | null = null
     
-    // Request sync only after room is confirmed joined with a small delay
     if (isRoomJoined) {
       syncTimeout = setTimeout(() => {
         if (socket) {
-          socket.emit('timer:request-sync', { roomId })
+          socket.emit('timer:get', { roomId })
         }
       }, 500)
     }
@@ -112,7 +117,7 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
         clearTimeout(syncTimeout)
       }
       if (socket) {
-        socket.off('timer:sync', handleSync)
+        socket.off('timer:state', handleTimerState)
         socket.off('error', handleError)
       }
       if (errorToastRef.current) {
@@ -125,36 +130,18 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
     }
   }, [socket, isConnected, roomId, isRoomJoined, toast])
 
-  // Update display time
+  // Update display time - server-authoritative
   useEffect(() => {
     const updateTime = () => {
       if (timerState.isRunning && timerState.endsAt) {
-        // Timer is running - calculate from endsAt
         const now = Date.now()
         const remaining = Math.max(0, timerState.endsAt - now)
-        
-        if (remaining > 0) {
-          const minutes = Math.floor(remaining / 60000)
-          const seconds = Math.floor((remaining % 60000) / 1000)
-          setDisplayTime(`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`)
-        } else {
-          setDisplayTime('00:00')
-        }
-      } else if (timerState.endsAt && !timerState.isRunning) {
-        // Timer is paused - use remaining time from state
-        const now = Date.now()
-        const remaining = Math.max(0, timerState.endsAt - now)
-        if (remaining > 0) {
-          const minutes = Math.floor(remaining / 60000)
-          const seconds = Math.floor((remaining % 60000) / 1000)
-          setDisplayTime(`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`)
-        } else {
-          setDisplayTime('00:00')
-        }
-      } else if (timerState.remaining > 0) {
-        // Fallback to remaining from server sync
-        const minutes = Math.floor(timerState.remaining / 60000)
-        const seconds = Math.floor((timerState.remaining % 60000) / 1000)
+        const minutes = Math.floor(remaining / 60000)
+        const seconds = Math.floor((remaining % 60000) / 1000)
+        setDisplayTime(`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`)
+      } else if (timerState.remainingSec > 0) {
+        const minutes = Math.floor(timerState.remainingSec / 60)
+        const seconds = timerState.remainingSec % 60
         setDisplayTime(`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`)
       } else {
         setDisplayTime('00:00')
@@ -162,7 +149,6 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
     }
 
     updateTime()
-    // Update display every 100ms if timer is running, otherwise every 1s
     const interval = setInterval(updateTime, timerState.isRunning ? 100 : 1000)
 
     return () => clearInterval(interval)
@@ -260,21 +246,8 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
         }
       }, 4000)
 
-      // Optimistic update - show timer starting immediately
-      const now = Date.now()
-      const focusMs = focusMinutes * 60 * 1000
-      const optimisticState: TimerState = {
-        mode: 'focus',
-        endsAt: now + focusMs,
-        isRunning: true,
-        remaining: focusMs,
-        durations: { focusMinutes, breakMinutes },
-      }
-      setTimerState(optimisticState)
-      
       confirmHandlerRef.current = (state: TimerState) => {
-        // Timer started successfully - sync with server state
-        if (state.endsAt !== null && state.endsAt !== undefined) {
+        if (state.startedAt !== null && state.endsAt !== null) {
           timerConfirmed = true
           if (startTimeoutRef.current) {
             clearTimeout(startTimeoutRef.current)
@@ -306,19 +279,6 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
       })
       return
     }
-
-    // Optimistic update - pause immediately
-    if (timerState.endsAt && timerState.isRunning) {
-      const now = Date.now()
-      const remaining = Math.max(0, timerState.endsAt - now)
-      setTimerState(prev => ({
-        ...prev,
-        isRunning: false,
-        endsAt: now + remaining,
-        remaining,
-      }))
-    }
-
     socket.emit('timer:pause', { roomId })
   }
 
@@ -331,21 +291,19 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
       })
       return
     }
-
-    // Optimistic update - resume immediately
-    if (timerState.endsAt && !timerState.isRunning) {
-      const now = Date.now()
-      const remaining = Math.max(0, timerState.endsAt - now)
-      if (remaining > 0) {
-        setTimerState(prev => ({
-          ...prev,
-          isRunning: true,
-          endsAt: now + remaining,
-          remaining,
-        }))
-        socket.emit('timer:resume', { roomId })
-      }
+    
+    if (!timerState.durationsSec) {
+      toast({
+        title: 'No timer',
+        description: 'Please start a timer first',
+        variant: 'destructive',
+      })
+      return
     }
+
+    const focusMinutes = timerState.durationsSec.focus / 60
+    const breakMinutes = timerState.durationsSec.break / 60
+    socket.emit('timer:start', { roomId, focusMinutes, breakMinutes })
   }
 
   const handleReset = () => {
@@ -360,7 +318,7 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
     socket.emit('timer:reset', { roomId })
   }
 
-  const isActive = timerState.endsAt !== null && timerState.remaining > 0
+  const isActive = timerState.durationsSec !== null && timerState.remainingSec > 0
 
   return (
     <Card className="rounded-2xl">
@@ -382,9 +340,9 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
             </div>
           )}
         </div>
-        {timerState.durations && (
+        {timerState.durationsSec && (
           <CardDescription>
-            {timerState.durations.focusMinutes}min focus / {timerState.durations.breakMinutes}min break
+            {Math.floor(timerState.durationsSec.focus / 60)}min focus / {Math.floor(timerState.durationsSec.break / 60)}min break
           </CardDescription>
         )}
       </CardHeader>

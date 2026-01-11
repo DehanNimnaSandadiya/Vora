@@ -71,8 +71,8 @@ export const useSocket = () => {
     let wasDisconnected = false;
 
     newSocket.on('connect', () => {
+      console.log('Socket connected');
       setIsConnected(true);
-      // Only show toast on reconnection after a disconnect, not initial connection
       if (hasConnected && wasDisconnected) {
         toast({
           title: 'Reconnected',
@@ -87,12 +87,10 @@ export const useSocket = () => {
     });
 
     newSocket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
       setIsConnected(false);
       wasDisconnected = true;
-      // Only show disconnect toast if we were previously connected
-      // and it's not a normal transport close during page load
       if (hasConnected && reason !== 'io client disconnect' && reason !== 'ping timeout' && reason !== 'transport error' && reason !== 'parse error') {
-        // Small delay to avoid showing toast for quick reconnections
         setTimeout(() => {
           if (!newSocket.connected) {
             if (reason === 'io server disconnect') {
@@ -114,19 +112,10 @@ export const useSocket = () => {
     });
 
     newSocket.on('connect_error', (error) => {
-      // Suppress timeout errors - expected on Render free tier (cold starts take 30-60s)
       const isTimeout = error.message.includes('timeout') || error.message.includes('xhr poll error');
-      
-      if (isTimeout) {
-        // Don't log timeout errors - they're normal for Render free tier
-        console.debug('Socket connection timeout (Render cold start - this is normal)');
-        return;
+      if (!isTimeout) {
+        console.log('Socket connect_error:', error.message);
       }
-      
-      // Only log other connection errors, don't show toast for normal reconnection attempts
-      console.debug('Socket connection error:', error);
-      
-      // Only show toast for authentication errors
       if (error.message.includes('Authentication')) {
         toast({
           title: 'Authentication failed',
@@ -134,7 +123,6 @@ export const useSocket = () => {
           variant: 'destructive',
         });
       }
-      // Don't show toast for network/timeout errors - socket.io will auto-retry
     });
 
     newSocket.on('error', (error) => {
