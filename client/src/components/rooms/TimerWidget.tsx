@@ -265,12 +265,18 @@ export function TimerWidget({ roomId, isRoomJoined = true }: TimerWidgetProps) {
       // Emit timer start
       socket.emit('timer:start', { roomId, focusMinutes, breakMinutes })
     } catch (error: any) {
+      isStartingRef.current = false
+      setIsStarting(false)
+      if (startTimeoutRef.current) {
+        clearTimeout(startTimeoutRef.current)
+        startTimeoutRef.current = null
+      }
+      confirmHandlerRef.current = null
       toast({
         title: 'Timer failed to start',
         description: error.message || 'Please wait for connection and try again.',
         variant: 'destructive',
       })
-      setIsStarting(false)
     }
   }
 
