@@ -10,12 +10,12 @@ router.use(protect);
 
 // Validation middleware
 const updateProfileValidation = [
-  body('name').optional().trim().isLength({ min: 1, max: 100 }).withMessage('Name must be between 1 and 100 characters'),
-  body('bio').optional().trim().isLength({ max: 500 }).withMessage('Bio cannot exceed 500 characters'),
-  body('university').optional().trim().isLength({ max: 200 }).withMessage('University name cannot exceed 200 characters'),
-  body('timezone').optional().trim().isLength({ max: 50 }).withMessage('Timezone cannot exceed 50 characters'),
+  body('name').optional({ checkFalsy: true }).trim().isLength({ min: 1, max: 100 }).withMessage('Name must be between 1 and 100 characters'),
+  body('bio').optional({ checkFalsy: true }).trim().isLength({ max: 500 }).withMessage('Bio cannot exceed 500 characters'),
+  body('university').optional({ checkFalsy: true }).trim().isLength({ max: 200 }).withMessage('University name cannot exceed 200 characters'),
+  body('timezone').optional({ checkFalsy: true }).trim().isLength({ max: 50 }).withMessage('Timezone cannot exceed 50 characters'),
   body('language').optional().isIn(['en', 'si', 'ta']).withMessage('Language must be en, si, or ta'),
-  body('avatarUrl').optional().trim().isURL().withMessage('Avatar URL must be a valid URL'),
+  body('avatarUrl').optional({ checkFalsy: true }).trim().isURL().withMessage('Avatar URL must be a valid URL'),
   body('preferences.theme').optional().isIn(['dark', 'light', 'system']).withMessage('Theme must be dark, light, or system'),
   body('preferences.notifications.inApp').optional().isBoolean(),
   body('preferences.notifications.email').optional().isBoolean(),
